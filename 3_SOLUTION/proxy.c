@@ -1,194 +1,147 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <pcap.h>
-#include <netinet/ether.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <arpa/inet.h>
 
-struct sniff_ethernet {
-	char ether_dhost[ETHER_ADDR_LEN]; /* Destination host address */
-	char ether_shost[ETHER_ADDR_LEN]; /* Source host address */
-	short ether_type; /* IP? ARP? RARP? etc */
-};
+int socket_desc2;
+struct sockaddr_in server_addr2;
 
-struct sniff_ip {
-	char ip_vhl;		/* version << 4 | header length >> 2 */
-	char ip_tos;		/* type of service */
-	short ip_len;		/* total length */
-	short ip_id;		/* identification */
-	short ip_off;		/* fragment offset field */
-#define IP_RF 0x8000		/* reserved fragment flag */
-#define IP_DF 0x4000		/* don't fragment flag */
-#define IP_MF 0x2000		/* more fragments flag */
-#define IP_OFFMASK 0x1fff	/* mask for fragmenting bits */
-	char ip_ttl;		/* time to live */
-	char ip_p;		/* protocol */
-	short ip_sum;		/* checksum */
-	struct in_addr ip_src,ip_dst; /* source and dest address */
-};
-#define IP_HL(ip)		(((ip)->ip_vhl) & 0x0f)
-#define IP_V(ip)		(((ip)->ip_vhl) >> 4)
+char* server_ip;
+char* server_port;
 
-typedef u_int tcp_seq;
+void chat2server(char * client_message)
+{
 
-struct sniff_tcp {
-	short th_sport;	
-	short th_dport;	
-	tcp_seq th_seq;		
-	tcp_seq th_ack;		
-	char th_offx2;	
-#define TH_OFF(th)	(((th)->th_offx2 & 0xf0) >> 4)
-	char th_flags;
-#define TH_FIN 0x01
-#define TH_SYN 0x02
-#define TH_RST 0x04
-#define TH_PUSH 0x08
-#define TH_ACK 0x10
-#define TH_URG 0x20
-#define TH_ECE 0x40
-#define TH_CWR 0x80
-#define TH_FLAGS (TH_FIN|TH_SYN|TH_RST|TH_ACK|TH_URG|TH_ECE|TH_CWR)
-	short th_win;		
-	short th_sum;		
-	short th_urp;		
-};
-
-#define SIZE_ETHERNET 14
-
-const struct sniff_ethernet *ethernet;
-const struct sniff_ip *ip; 
-const struct sniff_tcp *tcp; 
-const char *payload; 
-
-int size_ip;
-int size_tcp;
-
-int targetport;
-
-void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet);
-
-void hex_dump(const u_char *packet, int length);
-
-
-int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
-        return 1;
+    int server_size2 = sizeof(server_addr2);
+    if(send(socket_desc2, client_message, strlen(client_message), 0) < 0){
+        printf("Unable to send message\n");
+        exit(-1);
     }
 
-    pcap_if_t *alldevs;
-    pcap_if_t *d;
+    char server_message[2000];
+    if(recv(socket_desc2, server_message, sizeof(server_message), 0) < 0){
+        printf("Error while receiving server's msg\n");
+        exit(-1);
+    }
 
-    char *port_arg = argv[1];
-    int targetport = atoi(port_arg);
+    //return server_message;
+}
 
-    pcap_t *handle;
-    char errbuf[PCAP_ERRBUF_SIZE];
-    char filter_exp[100];  
+//parse arguments server_ip server_port client_port
+int main(int argc, char* argv[])
+{
+    if(argc < 4)
+    {
+        perror("Missing parameter");
+        exit(-1);
+    }
+
+    printf("s_ip:%s\n s_port:%s\n client_port:%s", argv[1], argv[2], argv[3]);
+
+    //strcpy(server_ip, argv[1]);
+    server_ip = argv[1];
+    server_port = argv[2];
+
+    int socket_desc, client_sock, client_size;
+    struct sockaddr_in server_addr, client_addr;
+    char server_message[2000], client_message[2000];
+ 
+    // Clean buffers:
+    memset(server_message, '\0', sizeof(server_message));
+    memset(client_message, '\0', sizeof(client_message));
+
+    // Create socket:
+    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
+
+    if(socket_desc < 0){
+        printf("Error while creating socket\n");
+        return -1;
+    }
+    printf("Socket created successfully\n");
     
-    snprintf(filter_exp, sizeof(filter_exp), "port %d", targetport);
-
-    if (pcap_findalldevs(&alldevs, errbuf) == -1) {
-        fprintf(stderr, "pcap_findalldevs: %s\n", errbuf);
-        return 1;
+     // Set port and IP that we'll be listening for, any other IP_SRC or port will be dropped: => for proxy - listening on client_port
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(atoi(argv[3]));
+    server_addr.sin_addr.s_addr = inet_addr("10.0.2.15");
+    
+    // Bind to the set port and IP:
+    if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr))<0){
+        printf("Couldn't bind to the port\n");
+        return -1;
     }
-
-    d = alldevs;
-
-    printf("Dev step %s.\n", d->name);
-
-    handle = pcap_open_live(d->name, BUFSIZ, 1, 1000, errbuf); 
-    if (handle == NULL) {
-        perror("Device down");
-        return 2;
+    printf("Done with binding\n");
+    
+        // Listen for clients:
+    if(listen(socket_desc, 1) < 0){
+        printf("Error while listening\n");
+        return -1;
     }
-
-    //printf("Handle step.");
-
-    if (pcap_datalink(handle) != DLT_EN10MB) {
-        perror("Ethernet headers - not supported");
-        return 2;
+    printf("\nListening for incoming connections.....\n");
+ 
+        // Accept an incoming connection from one of the clients:
+    client_size = sizeof(client_addr);
+    client_sock = accept(socket_desc, (struct sockaddr*)&client_addr, &client_size);
+    
+    if (client_sock < 0){
+        printf("Can't accept\n");
+        return -1;
     }
+    printf("Client connected at IP: %s and port: %i\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
-    struct bpf_program fp;
-    if (pcap_compile(handle, &fp, filter_exp, 0, PCAP_NETMASK_UNKNOWN) == -1) {
-        fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-        return 2;
+
+
+    //Server set-up
+    if(socket_desc2 < 0){
+        printf("Unable to create socket\n");
+        exit(-1);
     }
-    if (pcap_setfilter(handle, &fp) == -1) {
-        fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-        return 2;
+ 
+    printf("Socket created successfully\n");
+ 
+    // Set port and IP the same as server-side:
+    server_addr2.sin_family = AF_INET;
+    server_addr2.sin_port = htons(atoi(argv[2]));
+    server_addr2.sin_addr.s_addr = inet_addr(server_ip);
+ 
+
+    socket_desc2 = socket(AF_INET, SOCK_STREAM, 0);
+    // Send connection request to server:
+    if(connect(socket_desc2, (struct sockaddr*)&server_addr2, sizeof(server_addr2)) < 0){
+        printf("Unable to connect\n");
+        exit(-1);
     }
+    printf("Connected with server successfully\n");
+    ///end server set up
 
-    //printf("I'm here. Filter added.");
+        // Receive client's message:
+        // We now use client_sock, not socket_desc
+        while(1)
+        {
+            if (recv(client_sock, client_message, sizeof(client_message), 0) < 0){
+                printf("Couldn't receive\n");
+                return -1;
+            }
+            printf("Msg from client: %s\n", client_message);
+        
+            chat2server(client_message);
+            // Respond to client:
+            strcpy(server_message, "This is the server's message.");
+            //strcpy(server_message, chat2server(client_message));
 
-    const u_char *packet;
-    pcap_loop(handle, 0, packet_handler, (u_char *)handle);
-    pcap_close(handle);
+            if (send(client_sock, server_message, strlen(server_message), 0) < 0){
+                printf("Can't send\n");
+                return -1;
+            }
 
+            memset(client_message, '\0', sizeof(client_message));
+            memset(server_message, '\0', sizeof(client_message));
+        }
+
+        // Closing the socket:
+        close(client_sock);
+
+    close(socket_desc);
+ 
     return 0;
-}
-
-void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
-    
-    //printf("I'm here 2.");
-
-    struct sniff_ethernet *eth_header = (struct sniff_ethernet *)packet;
-    char src_mac[ETHER_ADDR_LEN];
-    char dst_mac[ETHER_ADDR_LEN];
-    ether_ntoa_r((struct ether_addr *)eth_header->ether_shost, src_mac);
-    ether_ntoa_r((struct ether_addr *)eth_header->ether_dhost, dst_mac);
-
-    printf("Source MAC: %s\n", src_mac);
-    printf("Destination MAC: %s\n", dst_mac);
-
-    int size_ethernet = SIZE_ETHERNET;
-
-    if (ntohs(eth_header->ether_type) == ETHERTYPE_IP) {
-        struct sniff_ip *ip_header = (struct sniff_ip *)(packet + size_ethernet);
-        char src_ip[INET_ADDRSTRLEN];
-        char dst_ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &(ip_header->ip_src), src_ip, INET_ADDRSTRLEN);
-        inet_ntop(AF_INET, &(ip_header->ip_dst), dst_ip, INET_ADDRSTRLEN);
-
-        printf("Source IP: %s\n", src_ip);
-        printf("Destination IP: %s\n", dst_ip);
-
-        int size_ip = IP_HL(ip_header) * 4;
-
-        if (ip_header->ip_p == IPPROTO_TCP) {
-            struct sniff_tcp *tcp_header = (struct sniff_tcp *)(packet + size_ethernet + size_ip);
-            printf("Source Port: %d\n", ntohs(tcp_header->th_sport));
-            printf("Destination Port: %d\n", ntohs(tcp_header->th_dport));
-        }
-
-        printf("Hex Dump of the Packet:\n");
-        hex_dump(packet, pkthdr->len);
-    }
-
-    char decision;
-    printf("Do you want to forward this packet? (y/n): ");
-    scanf(" %c", &decision);
-
-    if (decision == 'y' || decision == 'Y') {
-        pcap_t *handle = (pcap_t *)user_data;
-
-        // Fwd back
-        if (pcap_inject(handle, packet, pkthdr->len) == -1) {
-            pcap_perror(handle, "pcap_inject");
-        }
-    }
-}
-
-void hex_dump(const u_char *packet, int length) {
-    for (int i = 0; i < length; i++) {
-        printf("%02X ", packet[i]);
-        if ((i + 1) % 16 == 0) {
-            printf("\n");
-        }
-    }
-    printf("\n");
 }
