@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <pcap.h>
 #include <netinet/ether.h>
 #include <sys/socket.h>
@@ -65,16 +66,30 @@ const char *payload;
 int size_ip;
 int size_tcp;
 
+int targetport;
+
 void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet);
 
 void hex_dump(const u_char *packet, int length);
 
-int main(int argc, char *argv[])
-{
-    pcap_t *handle;
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+        return 1;
+    }
+
     pcap_if_t *alldevs;
     pcap_if_t *d;
-	char errbuf[PCAP_ERRBUF_SIZE];
+
+    char *port_arg = argv[1];
+    int targetport = atoi(port_arg);
+
+    pcap_t *handle;
+    char errbuf[PCAP_ERRBUF_SIZE];
+    char filter_exp[100];  
+    
+    snprintf(filter_exp, sizeof(filter_exp), "port %d", targetport);
 
     if (pcap_findalldevs(&alldevs, errbuf) == -1) {
         fprintf(stderr, "pcap_findalldevs: %s\n", errbuf);
@@ -83,28 +98,44 @@ int main(int argc, char *argv[])
 
     d = alldevs;
 
-    handle = pcap_open_live(d->name, BUFSIZ, 1, 1000, errbuf);
+    printf("Dev step %s.\n", d->name);
+
+    handle = pcap_open_live(d->name, BUFSIZ, 1, 1000, errbuf); 
     if (handle == NULL) {
         perror("Device down");
-        return(2);
+        return 2;
     }
+
+    //printf("Handle step.");
 
     if (pcap_datalink(handle) != DLT_EN10MB) {
         perror("Ethernet headers - not supported");
-        return(2);
+        return 2;
     }
 
+    struct bpf_program fp;
+    if (pcap_compile(handle, &fp, filter_exp, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+        fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
+        return 2;
+    }
+    if (pcap_setfilter(handle, &fp) == -1) {
+        fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
+        return 2;
+    }
+
+    //printf("I'm here. Filter added.");
+
     const u_char *packet;
-
     pcap_loop(handle, 0, packet_handler, (u_char *)handle);
-
     pcap_close(handle);
-    pcap_freealldevs(alldevs);
 
-	return(0);
+    return 0;
 }
 
 void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
+    
+    //printf("I'm here 2.");
+
     struct sniff_ethernet *eth_header = (struct sniff_ethernet *)packet;
     char src_mac[ETHER_ADDR_LEN];
     char dst_mac[ETHER_ADDR_LEN];
