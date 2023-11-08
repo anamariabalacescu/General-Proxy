@@ -10,6 +10,71 @@ struct sockaddr_in server_addr2;
 char* server_ip;
 char* server_port;
 
+struct Ethernet_Frame{ //L2
+    //char preamble[14];
+    //char SFD; //set frame delimiter
+    char Dest_MAC[17];
+    char Src_MAC[17];
+    char tag_802[8]; //optional
+    char ethtype[4];
+    char payload[3000];
+    char CRC[8];
+    //char igp[24]; //not part of frame ?
+};
+
+struct IPv4_Frame{
+    char version[4];
+    char header_lenght[4];
+    char service[8];
+    char total_lenght[16];
+    char id[16];
+    char ctrl = '0';
+    char df; //don't fragment if sizeof(message) > 1480
+    char mf; //otherwise
+    char ttl[8];
+    char protocol[8];
+    char checksum[16];
+    char offset[13];
+    char Src_IP[15];
+    char Dest_IP[15];
+    char options[8];
+    char data[1480];
+}
+
+struct ICMP{
+    char type[8];
+    char code[8];
+    char checkSum[8];
+    char additionalInf[32];
+}
+
+struct ARP{
+    char hardwareType[16];
+    char protocolType[16];
+    char hardwareAddressLen[8];
+    char protocolAddressLen[8];
+    char operationCode[16];
+    char sourceHardwareAddress[32];
+    char sourceProtocolAddress[32];
+    char targetHardwareAddress[32];
+    char targetProtocolAddress[32];
+    }
+
+
+struct TCP_Frame{
+    char src_port[16];
+    char dst_port[16];
+    char seq_no[32];
+    char ack_no[32];
+    char data_offset[32];
+    char reserved[4];
+    char flags[8];
+    char window_size[16];
+    char checksum[16];
+    char urg_ptr[16];
+    char options[320];
+}
+
 void chat2server(char * client_message)
 {
 
@@ -26,6 +91,17 @@ void chat2server(char * client_message)
     }
 
     //return server_message;
+}
+
+void hex_dump(char* message)
+{
+    for (int i = 0; i < sizeof(message); i++) {
+        printf("%02X ", message[i]);
+        if ((i + 1) % 16 == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
 }
 
 //parse arguments server_ip server_port client_port
@@ -62,8 +138,8 @@ int main(int argc, char* argv[])
     
      // Set port and IP that we'll be listening for, any other IP_SRC or port will be dropped: => for proxy - listening on client_port
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(atoi(argv[3]));
-    server_addr.sin_addr.s_addr = inet_addr("10.0.2.15");
+    server_addr.sin_port = htons(0); //proxy-server is listening on all ports
+    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
     
     // Bind to the set port and IP:
     if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr))<0){
@@ -99,6 +175,8 @@ int main(int argc, char* argv[])
  
     printf("Socket created successfully\n");
  
+    //AICI - se primeste port de la client;
+
     // Set port and IP the same as server-side:
     server_addr2.sin_family = AF_INET;
     server_addr2.sin_port = htons(atoi(argv[2]));
@@ -123,11 +201,15 @@ int main(int argc, char* argv[])
                 return -1;
             }
             printf("Msg from client: %s\n", client_message);
-        
+
+            hex_dump(client_message);
+
             chat2server(client_message);
             // Respond to client:
             strcpy(server_message, "This is the server's message.");
             //strcpy(server_message, chat2server(client_message));
+
+            hex_dump(server_message);
 
             if (send(client_sock, server_message, strlen(server_message), 0) < 0){
                 printf("Can't send\n");

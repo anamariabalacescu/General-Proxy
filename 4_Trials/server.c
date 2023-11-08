@@ -4,10 +4,6 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
  
-char** port_list; //se aloca la conexiune pe port primit de la proxy server
-//se incepe conexiunea cand lista nu e goala
-
-//argv[1] = port pe care asculta
 int main(int argc, char* argv[])
 {
     int socket_desc, client_sock, client_size;
@@ -55,7 +51,7 @@ int main(int argc, char* argv[])
             return -1;
         }
         printf("Client connected at IP: %s and port: %i\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-
+    
         // Receive client's message:
         // We now use client_sock, not socket_desc
         while(1){
