@@ -270,7 +270,7 @@ int main(int argc, char *argv[])
     // Send connection request to server:
     if (connect(socket_desc, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
-        printf("Unable to connect\n");
+        perror("Unable to connect\n");
         return -1;
     }
     printf("Connected with server successfully\n");

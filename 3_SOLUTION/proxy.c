@@ -10,7 +10,7 @@ struct sockaddr_in server_addr2;
 char* server_ip;
 char* server_port;
 
-struct Ethernet_Frame{ //L2
+typedef struct Ethernet_Frame{ //L2
     //char preamble[14];
     //char SFD; //set frame delimiter
     char Dest_MAC[17];
@@ -22,13 +22,13 @@ struct Ethernet_Frame{ //L2
     //char igp[24]; //not part of frame ?
 };
 
-struct IPv4_Frame{
+typedef struct IPv4_Frame{
     char version[4];
     char header_lenght[4];
     char service[8];
     char total_lenght[16];
     char id[16];
-    char ctrl = '0';
+    char ctrl;
     char df; //don't fragment if sizeof(message) > 1480
     char mf; //otherwise
     char ttl[8];
@@ -39,16 +39,16 @@ struct IPv4_Frame{
     char Dest_IP[15];
     char options[8];
     char data[1480];
-}
+};
 
-struct ICMP{
+typedef struct ICMP{
     char type[8];
     char code[8];
     char checkSum[8];
     char additionalInf[32];
-}
+};
 
-struct ARP{
+typedef struct ARP{
     char hardwareType[16];
     char protocolType[16];
     char hardwareAddressLen[8];
@@ -58,10 +58,10 @@ struct ARP{
     char sourceProtocolAddress[32];
     char targetHardwareAddress[32];
     char targetProtocolAddress[32];
-    }
+};
 
 
-struct TCP_Frame{
+typedef struct TCP_Frame{
     char src_port[16];
     char dst_port[16];
     char seq_no[32];
@@ -73,7 +73,7 @@ struct TCP_Frame{
     char checksum[16];
     char urg_ptr[16];
     char options[320];
-}
+};
 
 void chat2server(char * client_message)
 {
