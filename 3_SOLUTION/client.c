@@ -241,8 +241,8 @@ void getPreferences(char** filepath)
 //parse proxy_ip client_port filepath
 int main(int argc, char *argv[])
 {
-    printf("%s\t%s\t%s\n", argv[1], argv[2], argv[3]);
-    getPreferences(argv[3]);
+    //printf("%s\t%s\t%s\n", argv[1], argv[2], argv[3]);
+    //getPreferences(argv[3]);
     int socket_desc;
     struct sockaddr_in server_addr;
     char server_message[2000], client_message[2000];
