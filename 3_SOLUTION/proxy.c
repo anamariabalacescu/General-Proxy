@@ -1,101 +1,103 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <pthread.h>
+#include <signal.h>
 
-int socket_desc2;
-struct sockaddr_in server_addr2;
+#define MAX_CLIENTS 1000
+
+int proxy_socket;
+int server_socket;
+struct sockaddr_in proxy_addr;
+struct sockaddr_in server_addr;
 
 char* server_ip;
 char* server_port;
+char* client_port;
 
-typedef struct Ethernet_Frame{ //L2
-    //char preamble[14];
-    //char SFD; //set frame delimiter
-    char Dest_MAC[17];
-    char Src_MAC[17];
-    char tag_802[8]; //optional
-    char ethtype[4];
-    char payload[3000];
-    char CRC[8];
-    //char igp[24]; //not part of frame ?
-};
+typedef struct {
+    int socket;
+    struct sockaddr_in address;
+    char** blockedIP;
+    char** blocedMAC;
+    char** wantToReplace;
+    char** BytesToReplace;
+    int clientNumber;
+} Client;
 
-typedef struct IPv4_Frame{
-    char version[4];
-    char header_lenght[4];
-    char service[8];
-    char total_lenght[16];
-    char id[16];
-    char ctrl;
-    char df; //don't fragment if sizeof(message) > 1480
-    char mf; //otherwise
-    char ttl[8];
-    char protocol[8];
-    char checksum[16];
-    char offset[13];
-    char Src_IP[15];
-    char Dest_IP[15];
-    char options[8];
-    char data[1480];
-};
+int client_count = 0;
 
-typedef struct ICMP{
-    char type[8];
-    char code[8];
-    char checkSum[8];
-    char additionalInf[32];
-};
+Client* aux;
+char buffaux[2000];
+int siqnalRequired=0;
 
-typedef struct ARP{
-    char hardwareType[16];
-    char protocolType[16];
-    char hardwareAddressLen[8];
-    char protocolAddressLen[8];
-    char operationCode[16];
-    char sourceHardwareAddress[32];
-    char sourceProtocolAddress[32];
-    char targetHardwareAddress[32];
-    char targetProtocolAddress[32];
-};
-
-
-typedef struct TCP_Frame{
-    char src_port[16];
-    char dst_port[16];
-    char seq_no[32];
-    char ack_no[32];
-    char data_offset[32];
-    char reserved[4];
-    char flags[8];
-    char window_size[16];
-    char checksum[16];
-    char urg_ptr[16];
-    char options[320];
-};
-
-void chat2server(char * client_message)
+void myhandler(int signum) 
 {
+    if(signum==SIGQUIT) 
+    {
+        siqnalRequired=1;
+        int valread;
+        // Forward the message to the server
+        send(server_socket, buffaux, strlen(buffaux), 0);
+        // Receive the server's response
+        valread = recv(server_socket, buffaux, sizeof(buffaux), 0);
+        if (valread <= 0) {
+            // Server disconnected
+            close(aux->socket);
+            printf("Server disconnected\n");
+        }
 
-    int server_size2 = sizeof(server_addr2);
-    if(send(socket_desc2, client_message, strlen(client_message), 0) < 0){
-        printf("Unable to send message\n");
-        exit(-1);
+        buffaux[valread] = '\0';
+        printf("Server message to client(%d): ",aux->clientNumber);
+        hex_dump(buffaux);
     }
-
-    char server_message[2000];
-    if(recv(socket_desc2, server_message, sizeof(server_message), 0) < 0){
-        printf("Error while receiving server's msg\n");
-        exit(-1);
-    }
-
-    //return server_message;
 }
 
-void hex_dump(char* message)
-{
-    for (int i = 0; i < sizeof(message); i++) {
+
+void *handle_client(void *arg) {
+    Client *client = (Client *)arg;
+    char buffer[2000];
+    int valread;
+
+    while (1) {
+        valread = read(client->socket, buffer, sizeof(buffer));
+        if (valread <= 0) {
+            // Client disconnected
+            close(client->socket);
+            printf("Client disconnected\n");
+            client_count--;
+            break;
+        }
+
+        buffer[valread] = '\0';
+        printf("Client(%d) message: ",client->clientNumber);
+        hex_dump(buffer);
+        aux = client;
+        strcpy(buffaux,buffer);
+
+        siqnalRequired=0;
+        struct sigaction action;
+        action.sa_handler = myhandler;
+        action.sa_flags = NULL;
+        
+        
+        
+        
+
+        strcpy(buffer,buffaux);
+        // Forward the server's response to the client
+        send(client->socket, buffer, strlen(buffer), 0);
+    }
+
+    free(client);
+    pthread_exit(NULL);
+}
+
+void hex_dump(char* message) {
+    for (int i = 0; i < strlen(message); i++) {
         printf("%02X ", message[i]);
         if ((i + 1) % 16 == 0) {
             printf("\n");
@@ -104,126 +106,107 @@ void hex_dump(char* message)
     printf("\n");
 }
 
-//parse arguments server_ip server_port client_port
-int main(int argc, char* argv[])
-{
-    if(argc < 4)
-    {
+int main(int argc, char* argv[]) {
+    if (argc < 4) {
         perror("Missing parameter");
         exit(-1);
     }
 
-    printf("s_ip:%s\n s_port:%s\n client_port:%s", argv[1], argv[2], argv[3]);
-
-    //strcpy(server_ip, argv[1]);
     server_ip = argv[1];
     server_port = argv[2];
+    client_port = argv[3];
 
-    int socket_desc, client_sock, client_size;
-    struct sockaddr_in server_addr, client_addr;
-    char server_message[2000], client_message[2000];
- 
-    // Clean buffers:
-    memset(server_message, '\0', sizeof(server_message));
-    memset(client_message, '\0', sizeof(client_message));
+    // Set up proxy address structure
+    proxy_addr.sin_family = AF_INET;
+    proxy_addr.sin_port = htons(atoi(client_port));
+    proxy_addr.sin_addr.s_addr = INADDR_ANY;
 
-    // Create socket:
-    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
-
-    if(socket_desc < 0){
-        printf("Error while creating socket\n");
-        return -1;
-    }
-    printf("Socket created successfully\n");
-    
-     // Set port and IP that we'll be listening for, any other IP_SRC or port will be dropped: => for proxy - listening on client_port
+    // Set up server address structure
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(0); //proxy-server is listening on all ports
-    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
-    
-    // Bind to the set port and IP:
-    if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr))<0){
+    server_addr.sin_port = htons(atoi(server_port));
+    server_addr.sin_addr.s_addr = inet_addr(server_ip);
+
+    // Create proxy socket
+    proxy_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (proxy_socket < 0) {
+        printf("Unable to create proxy socket\n");
+        exit(-1);
+    }
+
+    // Bind proxy socket to the specified port
+    if (bind(proxy_socket, (struct sockaddr*)&proxy_addr, sizeof(proxy_addr)) < 0) {
         printf("Couldn't bind to the port\n");
-        return -1;
+        exit(-1);
     }
-    printf("Done with binding\n");
-    
-        // Listen for clients:
-    if(listen(socket_desc, 1) < 0){
+
+    // Listen for incoming connections
+    if (listen(proxy_socket, 1000) < 0) {
         printf("Error while listening\n");
-        return -1;
+        exit(-1);
     }
-    printf("\nListening for incoming connections.....\n");
- 
-        // Accept an incoming connection from one of the clients:
-    client_size = sizeof(client_addr);
-    client_sock = accept(socket_desc, (struct sockaddr*)&client_addr, &client_size);
+
+    // Connect to the server
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket < 0) {
+        printf("Unable to create server socket\n");
+        exit(-1);
+    }
+
+    // Connect to the server
+    if (connect(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        printf("Unable to connect to the server\n");
+        exit(-1);
+    }
+
+    printf("Proxy listening on htons(port %s), forwarding to %s:%s\n", client_port, server_ip, server_port);
+
     
-    if (client_sock < 0){
-        printf("Can't accept\n");
-        return -1;
-    }
-    printf("Client connected at IP: %s and port: %i\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+    pthread_t threads[MAX_CLIENTS];
 
+    while (1) {
+        int client_socket;
+        struct sockaddr_in client_addr;
+        int client_size = sizeof(client_addr);
 
+        // Accept an incoming connection from a client
+        client_socket = accept(proxy_socket, (struct sockaddr*)&client_addr, &client_size);
 
-    //Server set-up
-    if(socket_desc2 < 0){
-        printf("Unable to create socket\n");
-        exit(-1);
-    }
- 
-    printf("Socket created successfully\n");
- 
-    //AICI - se primeste port de la client;
-
-    // Set port and IP the same as server-side:
-    server_addr2.sin_family = AF_INET;
-    server_addr2.sin_port = htons(atoi(argv[2]));
-    server_addr2.sin_addr.s_addr = inet_addr(server_ip);
- 
-
-    socket_desc2 = socket(AF_INET, SOCK_STREAM, 0);
-    // Send connection request to server:
-    if(connect(socket_desc2, (struct sockaddr*)&server_addr2, sizeof(server_addr2)) < 0){
-        printf("Unable to connect\n");
-        exit(-1);
-    }
-    printf("Connected with server successfully\n");
-    ///end server set up
-
-        // Receive client's message:
-        // We now use client_sock, not socket_desc
-        while(1)
-        {
-            if (recv(client_sock, client_message, sizeof(client_message), 0) < 0){
-                printf("Couldn't receive\n");
-                return -1;
-            }
-            printf("Msg from client: %s\n", client_message);
-
-            hex_dump(client_message);
-
-            chat2server(client_message);
-            // Respond to client:
-            strcpy(server_message, "This is the server's message.");
-            //strcpy(server_message, chat2server(client_message));
-
-            hex_dump(server_message);
-
-            if (send(client_sock, server_message, strlen(server_message), 0) < 0){
-                printf("Can't send\n");
-                return -1;
-            }
-
-            memset(client_message, '\0', sizeof(client_message));
-            memset(server_message, '\0', sizeof(client_message));
+        if (client_socket < 0) {
+            printf("Can't accept\n");
+            exit(-1);
         }
 
-        // Closing the socket:
-        close(client_sock);
 
-    close(socket_desc);
- 
+        // Create a new thread to handle the client
+        Client *client = (Client *)malloc(sizeof(Client));
+        client->socket = client_socket;
+        client->address = client_addr;
+        client->clientNumber = client_count;
+
+        printf("Client(%d) connected at IP: %s and port: %i\n",client->clientNumber ,inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+
+        if (pthread_create(&threads[client_count], NULL, handle_client, (void *)client) != 0) {
+            perror("Thread creation failed");
+            exit(EXIT_FAILURE);
+        }
+
+        client_count++;
+
+        // Limit the number of clients for this example
+        if (client_count == MAX_CLIENTS) {
+            printf("Maximum number of clients reached. No more connections will be accepted.\n");
+            break;
+        }
+    }
+
+    // Wait for all threads to finish
+    for (int i = 0; i < client_count; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    // Close sockets
+    close(proxy_socket);
+    close(server_socket);
+
     return 0;
 }
