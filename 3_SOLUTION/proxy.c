@@ -8,7 +8,7 @@
 #include <signal.h>
 
 
-#define MAX_CLIENTS 1000
+#define MAX_CLIENTS 3
 
 int proxy_socket;
 int server_socket;
@@ -57,7 +57,7 @@ void *handle_client(void *arg) {
         }
 
         buffer[valread] = '\0';
-        printf("\nClient(%d) message: ",client->clientNumber);
+        printf("\nClient(%d) message:\n",client->clientNumber);
         hex_dump(buffer);
         aux = client;
         pthread_mutex_lock(&mutex);
@@ -83,7 +83,7 @@ void *handle_client(void *arg) {
                 break;
             } else {
                 buffer[valread] = '\0';
-                printf("\nServer message to client(%d): ", client->clientNumber);
+                printf("\nServer message to client(%d):\n", client->clientNumber);
                 hex_dump(buffer);
 
                 // Send server message to client
@@ -108,24 +108,42 @@ void *handle_client(void *arg) {
     pthread_exit(NULL);
 }
 
-void hex_dump(char* message) {
-    printf("\n");
-    int i=0;
-    for(i=0;i<strlen(message);i++){
-        printf("%c",message[i]);
-        if((i+1)%8 == 0)
-            printf("\n");
-    }
-    if((i+1)%8 != 0)
-        printf("\n");
-    printf("---------------------------\n");
-    for (i = 0; i < strlen(message); i++) {
-        printf("%02X ", message[i]);
-        if ((i + 1) % 8 == 0) {
-            printf("\n");
+void hex_dump(const char* message) {
+    ssize_t length = strlen(message);
+    size_t i, j;
+
+    for (i = 0; i < length; i += 16) {
+        // address offset
+        printf("%08lX: ", i);
+
+        // hexdump
+        for (j = 0; j < 16 && i + j < length; j++) {
+            printf("%02X", (unsigned char)message[i + j]);
+            if (j % 2 == 1) {
+                printf(" ");
+            }
         }
+
+        // padding
+        for (; j < 16; j++) {
+            printf("   ");
+            if (j % 2 == 1) {
+                printf(" ");
+            }
+        }
+
+        // ASCII
+        for (j = 0; j < 16 && i + j < length; j++) {
+            char ch = message[i + j];
+            if (ch >= 32 && ch <= 126) {
+                printf("%c", ch);
+            } else {
+                printf(".");
+            }
+        }
+
+        printf("\n");
     }
-    printf("\n");
 }
 
 int main(int argc, char* argv[]) {
@@ -167,7 +185,7 @@ int main(int argc, char* argv[]) {
         exit(-1);
     }
 
-    // Connect to the server
+    // Server socket for communication
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0) {
         printf("Unable to create server socket\n");
