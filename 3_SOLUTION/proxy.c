@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <signal.h>
 
+
 #define MAX_CLIENTS 1000
 
 int proxy_socket;
@@ -21,12 +22,16 @@ char* client_port;
 typedef struct {
     int socket;
     struct sockaddr_in address;
-    char** blockedIP;
-    char** blocedMAC;
-    char** wantToReplace;
-    char** BytesToReplace;
     int clientNumber;
 } Client;
+
+typedef struct {
+    Client client;
+    char* message;
+}Message;
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 int client_count = 0;
 
@@ -38,7 +43,7 @@ void *handle_client(void *arg) {
     Client *client = (Client *)arg;
     char buffer[2000];
     int valread;
-
+    
     while (1) {
         valread = read(client->socket, buffer, sizeof(buffer));
         if (valread <= 0) {
@@ -53,9 +58,9 @@ void *handle_client(void *arg) {
         printf("\nClient(%d) message: ",client->clientNumber);
         hex_dump(buffer);
         aux = client;
-        
+        pthread_mutex_lock(&mutex);
         printf("\nSelect (F) Forward, (D) Drop, (R) Replace Bytes\n");
-        printf("Enter your choice: ");
+        printf("Enter your choice for client(%d): ",client->clientNumber);
         char choice;
         scanf("%c",&choice);
         getchar();
@@ -72,6 +77,7 @@ void *handle_client(void *arg) {
                 close(client->socket);
                 printf("Server disconnected\n");
                 client_count--;
+                pthread_mutex_unlock(&mutex);
                 break;
             } else {
                 buffer[valread] = '\0';
@@ -80,14 +86,17 @@ void *handle_client(void *arg) {
 
                 // Send server message to client
                 send(client->socket, buffer, strlen(buffer), 0);
+                pthread_mutex_unlock(&mutex);
             }
         } else if (choice == 'D') {
             // Nothing to be done, server won't get the message
             printf("Packet dropped\n");
-            memcpy(buffer, "Packet dropped\n", strlen("Packet dropped \n"));
+            memcpy(buffer, "Packet dropped \n", strlen("Packet dropped \n"));
             send(client->socket, buffer, strlen(buffer), 0);
+            pthread_mutex_unlock(&mutex);
         } else if (choice == 'R') {
             //TO DO
+            pthread_mutex_unlock(&mutex);
         }
         // Forward the server's response to the client
         //send(client->socket, buffer, strlen(buffer), 0);
@@ -98,9 +107,19 @@ void *handle_client(void *arg) {
 }
 
 void hex_dump(char* message) {
-    for (int i = 0; i < strlen(message); i++) {
+    printf("\n");
+    int i=0;
+    for(i=0;i<strlen(message);i++){
+        printf("%c",message[i]);
+        if((i+1)%8 == 0)
+            printf("\n");
+    }
+    if((i+1)%8 != 0)
+        printf("\n");
+    printf("---------------------------\n");
+    for (i = 0; i < strlen(message); i++) {
         printf("%02X ", message[i]);
-        if ((i + 1) % 16 == 0) {
+        if ((i + 1) % 8 == 0) {
             printf("\n");
         }
     }
@@ -163,40 +182,41 @@ int main(int argc, char* argv[]) {
 
     
     pthread_t threads[MAX_CLIENTS];
-
+    int max_client = 0;
     while (1) {
-        int client_socket;
-        struct sockaddr_in client_addr;
-        int client_size = sizeof(client_addr);
+        if(max_client == 0) {
+            int client_socket;
+            struct sockaddr_in client_addr;
+            int client_size = sizeof(client_addr);
 
-        // Accept an incoming connection from a client
-        client_socket = accept(proxy_socket, (struct sockaddr*)&client_addr, &client_size);
+            // Accept an incoming connection from a client
+            client_socket = accept(proxy_socket, (struct sockaddr*)&client_addr, &client_size);
 
-        if (client_socket < 0) {
-            printf("Can't accept\n");
-            exit(-1);
-        }
+            if (client_socket < 0) {
+                printf("Can't accept\n");
+                exit(-1);
+            }
 
 
-        // Create a new thread to handle the client
-        Client *client = (Client *)malloc(sizeof(Client));
-        client->socket = client_socket;
-        client->address = client_addr;
-        client->clientNumber = client_count;
+            // Create a new thread to handle the client
+            Client *client = (Client *)malloc(sizeof(Client));
+            client->socket = client_socket;
+            client->address = client_addr;
+            client->clientNumber = client_count;
 
-        printf("Client(%d) connected at IP: %s and port: %i\n",client->clientNumber ,inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+            printf("Client(%d) connected at IP: %s and port: %i\n",client->clientNumber ,inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
-        if (pthread_create(&threads[client_count], NULL, handle_client, (void *)client) != 0) {
-            perror("Thread creation failed");
-            exit(EXIT_FAILURE);
-        }
-
+            if (pthread_create(&threads[client_count], NULL, handle_client, (void *)client) != 0) {
+                perror("Thread creation failed");
+                exit(EXIT_FAILURE);
+            }
+    }
         client_count++;
 
         // Limit the number of clients for this example
         if (client_count == MAX_CLIENTS) {
             printf("Maximum number of clients reached. No more connections will be accepted.\n");
-            break;
+            max_client = 1;
         }
     }
 
