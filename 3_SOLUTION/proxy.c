@@ -34,6 +34,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 int client_count = 0;
+int max_client = 0;
 
 Client* aux;
 char buffaux[2000];
@@ -51,6 +52,7 @@ void *handle_client(void *arg) {
             close(client->socket);
             printf("\nClient disconnected\n");
             client_count--;
+            max_client = 0;
             break;
         }
 
@@ -76,7 +78,7 @@ void *handle_client(void *arg) {
                 // Server disconnected
                 close(client->socket);
                 printf("Server disconnected\n");
-                client_count--;
+                
                 pthread_mutex_unlock(&mutex);
                 break;
             } else {
@@ -182,7 +184,7 @@ int main(int argc, char* argv[]) {
 
     
     pthread_t threads[MAX_CLIENTS];
-    int max_client = 0;
+
     while (1) {
         if(max_client == 0) {
             int client_socket;
