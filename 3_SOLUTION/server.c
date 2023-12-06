@@ -5,6 +5,10 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int max_client = 0;
+
 void *handle_client(void *socket_desc) {
     int client_sock = *((int*)socket_desc);
     char client_message[2000], server_message[2000];
@@ -20,7 +24,7 @@ void *handle_client(void *socket_desc) {
             break; // Exit the loop on receive error
         }
         printf("Msg from client: %s\n", client_message);
-
+        pthread_mutex_lock(&mutex);
         // Respond to client:
         strcpy(server_message, "Packet has reached its destination\n");
 
@@ -28,6 +32,7 @@ void *handle_client(void *socket_desc) {
             printf("Can't send\n");
             break; // Exit the loop on send error
         }
+        pthread_mutex_unlock(&mutex);
 
         sleep(2);
         memset(client_message, '\0', sizeof(client_message));
