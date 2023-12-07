@@ -8,7 +8,7 @@
 #include <signal.h>
 
 
-#define MAX_CLIENTS 1000
+#define MAX_CLIENTS 3
 
 //black list and replacing rules
 char** blockedIp;
@@ -342,6 +342,18 @@ void hex_dump(const char* message) {
     }
 }
 
+int searchBlocked(char *add, int type){
+    if(type == 1){
+        //search ip
+        for(int i = 0; i < blckip; i++)
+            if(strcmp(blockedIp[i], add) == 0){
+                printf("aici\n");
+                return 1;
+            }
+        return 0;
+    }
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 4) {
         perror("Missing parameter");
@@ -413,36 +425,43 @@ int main(int argc, char* argv[]) {
 
         // Accept an incoming connection from a client
         client_socket = accept(proxy_socket, (struct sockaddr*)&client_addr, &client_size);
-
+        
         if (client_socket < 0) {
             printf("Can't accept\n");
             exit(-1);
         }
 
+        if(searchBlocked(inet_ntoa(client_addr.sin_addr), 1) == 0) {
 
+            send(client_socket, "You're connected", strlen("You're connected"), 0);
         // Create a new thread to handle the client
-        Client *client = (Client *)malloc(sizeof(Client));
-        client->socket = client_socket;
-        client->address = client_addr;
-        client->clientNumber = client_count;
-        client_count++;
+            Client *client = (Client *)malloc(sizeof(Client));
+            client->socket = client_socket;
+            client->address = client_addr;
+            client->clientNumber = client_count;
+            client_count++;
 
-        if(client_count <= MAX_CLIENTS) {
-            printf("Client(%d) connected at IP: %s and port: %i\n",client->clientNumber ,inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+            if(client_count <= MAX_CLIENTS) {
+                printf("Client(%d) connected at IP: %s and port: %i\n",client->clientNumber ,inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
-            if (pthread_create(&threads[client_count - 1], NULL, handle_client, (void *)client) != 0) {
-                perror("Thread creation failed");
-                exit(EXIT_FAILURE);
+                if (pthread_create(&threads[client_count - 1], NULL, handle_client, (void *)client) != 0) {
+                    perror("Thread creation failed");
+                    exit(EXIT_FAILURE);
+                }
+                        // Limit the number of clients for this example
+                if (client_count == MAX_CLIENTS) {
+                    printf("Maximum number of clients reached. No more connections will be accepted.\n");
+                    max_client = 1;
+                }
+            } else {
+                // Enqueue in waiting list
+                printf("Client(%d) enqueued in waiting list\n", client->clientNumber);
+                enqueue_waiting_client(client);
             }
-                    // Limit the number of clients for this example
-            if (client_count == MAX_CLIENTS) {
-                printf("Maximum number of clients reached. No more connections will be accepted.\n");
-                max_client = 1;
-            }
-        } else {
-            // Enqueue in waiting list
-            printf("Client(%d) enqueued in waiting list\n", client->clientNumber);
-            enqueue_waiting_client(client);
+        } else{ 
+            send(client_socket, "You're blocked", strlen("You're blocked"), 0);
+            printf("Blocked ip: %s\n", inet_ntoa(client_addr.sin_addr));
+            close(client_socket);
         }
     }
 
