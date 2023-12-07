@@ -7,9 +7,12 @@
 #include <pthread.h>
 #include <signal.h>
 #include <time.h>
-
+#include <fcntl.h>
 
 #define MAX_CLIENTS 1000
+
+#define linechar 128
+#define delim -
 
 //black list and replacing rules
 char** blockedIp;
@@ -116,85 +119,156 @@ void printNow(char *Message) {
 }
 //set-up for server
 
-void getRules(int server_sock) {
-    // Receiving blocked ip addresses
-    int nr = 0;
-    int len;
-    char* server_message;
-    recv(server_sock, &nr, sizeof(int), 0);
-    printf("%d \n", nr);
-    //printNow(number);
-    if (nr > 0) {
-        for (int i = 0; i < nr; i++) {
-            recv(server_sock, &len, sizeof(int), 0);
-            printf("GOT: %d\t", len);
-            server_message = (char*) malloc((len+1) * sizeof(char));
-            recv(server_sock, server_message, len, 0);
-            printNow(server_message);
-            blockedIp = (char **)realloc(blockedIp, (blckip + 1) * sizeof(char *));
-            blockedIp[blckip] = strdup(server_message);
-            blckip++;
+// char *makeOneString(char *s1, char *s2) {
+//     char *string = malloc(strlen(s1) + strlen(s2) + 2); // +2 for the '-' and '\0'
+//     if (string == NULL) {
+//         perror("malloc failed");
+//         exit(-1);
+//     }
 
-            len = 0;
-            memset(server_message, '\0', sizeof(server_message));
-        }
+//     strcpy(string, s1);
+//     strcat(string, "-");
+//     strcat(string, s2);
+
+//     return string;
+// }
+
+void getRules(const char* filepath) {
+    blockedIp = (char**)malloc(sizeof(char*));
+    blockedMac = (char**)malloc(sizeof(char*));
+    ips.initialValue = (char**)malloc(sizeof(char*));
+    ips.replacedValue = (char**)malloc(sizeof(char*));
+    rBytes.initialValue = (char**)malloc(sizeof(char*));
+    rBytes.replacedValue = (char**)malloc(sizeof(char*));
+
+    int f = open(filepath, O_RDONLY);
+    int rc;
+    if(f < 0)
+    {
+        perror("File descriptor not received");
+        exit(-1);
+    }    
+
+    char* buf = (char*)malloc(sizeof(char)*linechar);
+    ssize_t bytes_read;
+ 
+    //buf = malloc((linechar + 1) * sizeof(char));
+    /* read the last 100 characthers */
+    //bytes_read = read(f, buf, linechar);
+
+    // if(bytes_read == 0)
+    // {
+    //     perror("File is empty");
+    //     exit(-1);
+    // }
+
+    int caz = -1;
+    //cases: 1 - ip blocked, 2 - mac blocked, 3 - replace ip, 4 - replace bytes
+
+    char c;
+    ssize_t countch = read (f, &c, 1);
+
+    if(countch < 1)
+    {
+        perror("File is empty");
+        exit(-1);
     }
 
-    //printf("aici 1\n");
-    // Receiving blocked mac addresses
-    nr = 0;
-    //memset(number, '\0', sizeof(number));
-    recv(server_sock, &nr, sizeof(nr), 0);
-
-    if (nr > 0) {
-        for (int i = 0; i < nr; i++) {
-            recv(server_sock, &len, sizeof(len), 0);
-            printf("GOT: %d\t", len);
-            server_message = (char*) malloc((len + 1) * sizeof(char));
-            recv(server_sock, server_message, len, 0);
-            printNow(server_message);
-            blockedMac = (char **)realloc(blockedMac, (blckmac + 1) * sizeof(char *));
-            blockedMac[blckmac] = strdup(server_message);
-            blckmac++;
-
-            len = 0;
-            memset(server_message, '\0', sizeof(server_message));
+    while(countch)
+    {
+        int nrch = 0;
+        int ok = 0;
+        while(c!= '\n')
+        {
+            ok = 1;
+            buf[nrch++] = c;
+            read(f, &c, 1);
         }
+
+        buf[nrch] = '\0';
+        
+        if(ok == 1)
+        {
+            if(strstr(buf, "ipr"))
+                caz = 3;
+            else {
+                if(strstr(buf, "mac"))
+                    caz = 2;
+                else {
+                    if(strstr(buf, "ip"))
+                        caz = 1;
+                    else {
+                        if(strstr(buf, "bytesr"))
+                            caz = 4;
+                        else{
+                            if(strlen(buf)>0)
+                            //nu suntem pe linie pentru determinare a cazului deci trebuie sa preluam valorile
+                            switch(caz)
+                            {
+                                case 1:
+                                    blockedIp = (char**)realloc(blockedIp, (blckip + 1)*sizeof(char*));
+                                    blockedIp[blckip] = (char*)malloc(sizeof(char)*(strlen(buf)+1)); //+1 pentru '\0' de la sfarsitul lui buf
+                                    strcpy(blockedIp[blckip], buf);
+                                    blckip++;
+                                    break;
+                                case 2:
+                                    blockedMac = (char**)realloc(blockedMac, (blckmac + 1)*sizeof(char*));
+                                    blockedMac[blckmac] = (char*)malloc(sizeof(char)*(strlen(buf)+1));
+                                    strcpy(blockedMac[blckmac], buf);
+                                    blckmac++;
+                                    break;
+                                case 3:
+                                    ips.initialValue = (char**)realloc(ips.initialValue, sizeof(char) * (rplip + 1));
+                                    ips.replacedValue = (char**)realloc(ips.replacedValue, sizeof(char) * (rplip + 1));
+                                    ips.initialValue[rplip] = (char*)malloc(sizeof(char)*(strlen(buf)+1));
+                                    ips.replacedValue[rplip] = (char*)malloc(sizeof(char)*(strlen(buf)+1));
+                                    char* ip1 = strtok(buf, "-");
+                                    char* ip2 = strtok(NULL, "\n");
+                                    strcpy(ips.initialValue[rplip], ip1);
+                                    strcpy(ips.replacedValue[rplip], ip2);
+                                    rplip++;
+                                    break;
+                                case 4:
+                                    rBytes.initialValue = (char**)realloc(rBytes.initialValue, sizeof(char) * (rplbytes + 1));
+                                    rBytes.replacedValue = (char**)realloc(rBytes.replacedValue, sizeof(char) * (rplbytes + 1));
+                                    rBytes.initialValue[rplbytes] = (char*) malloc(sizeof(char) * (strlen(buf) + 1));
+                                    rBytes.replacedValue[rplbytes] = (char*) malloc(sizeof(char) * (strlen(buf) + 1));
+                                    char* mac1 = strtok(buf, "-");
+                                    char* mac2 = strtok(NULL, "\n");
+                                    strcpy(rBytes.initialValue[rplbytes], mac1);
+                                    strcpy(rBytes.replacedValue[rplbytes], mac2);
+                                    rplbytes++;
+                                    break;
+                                default:
+                                    perror("Invalid case");
+                                    exit(-1);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        countch = read(f, &c, 1);
+        memset(buf, '\0', sizeof(buf));
     }
 
-    //printf("aici 2\n");
+    //pentru verificare afisam rezultatele:
+    printf("Blocked ip:\n");
+    for(int i = 0; i < blckip; i++)
+        printf("%s\n", blockedIp[i]);
+    
+    printf("Blocked mac:\n");
+    for(int i = 0; i < blckmac; i++)
+        printf("%s\n", blockedMac[i]);
 
-    // Receiving bytes to replace
-    recv(server_sock, &nr, sizeof(int), 0);
-    if (nr > 0) {
-        for (int i = 0; i < nr; i++) {
+    printf("Replace ip:\n");
+    for(int i = 0; i < rplip; i++)
+        printf("%s %s\n", ips.initialValue[i], ips.replacedValue[i]);
 
-            recv(server_sock, &len, sizeof(len), 0);
-            
-            char *server_message = (char *)malloc((len + 1) * sizeof(char));
-            recv(server_sock, server_message, len, 0);
-                printNow(server_message);
-            server_message[len] = '\0';
-            rBytes.initialValue = (char **)realloc(rBytes.initialValue, (rplbytes + 1) * sizeof(char *));
-            rBytes.replacedValue = (char **)realloc(rBytes.replacedValue, (rplbytes + 1) * sizeof(char *));
-            //char *aux = strtok(server_message, "-");
-            
-            rBytes.initialValue[rplbytes] = strdup(strtok(server_message, "-"));
-            //printf("SECV1 : %s\n", rBytes.initialValue[rplbytes]);
+    printf("Replace bytes:\n");
+    for(int i = 0; i < rplbytes; i++)
+        printf("%s cu %s\n", rBytes.initialValue[i], rBytes.replacedValue[i]);
 
-            // allocate memory + copy value
-            rBytes.replacedValue[rplbytes] = strdup(strtok(NULL, "\0"));
-            //printf("SECV2 : %s\n", rBytes.replacedValue[rplbytes]);
-            //printf("SECV1 : %s\n", rBytes.initialValue[rplbytes]);
-            
-            rplbytes++;
-            
-            len = 0;
-            memset(server_message, '\0', sizeof(server_message));
-        }
-    }
-
-    //printf("aici 3\n");
 }
 
 //end set-up
@@ -396,10 +470,11 @@ void history(const char* maker, const char* action) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 4) {
-        perror("Missing parameter");
-        exit(-1);
-    }
+    // if (argc < 4) {
+    //     perror("Missing parameter");
+    //     exit(-1);
+    // }
+
     // Initialize arrays
     blockedIp = (char**)malloc(sizeof(char*));
     blockedMac = (char**)malloc(sizeof(char*));
@@ -407,6 +482,8 @@ int main(int argc, char* argv[]) {
     ips.replacedValue = (char**)malloc(sizeof(char*));
     rBytes.initialValue = (char**)malloc(sizeof(char*));
     rBytes.replacedValue = (char**)malloc(sizeof(char*));
+
+    getRules(argv[4]);
 
     server_ip = argv[1];
     server_port = argv[2];
@@ -455,9 +532,7 @@ int main(int argc, char* argv[]) {
     }
 
     history("Proxy", "connected to the server");
-    getRules(server_socket); //get rules and blacklist from server
-    history("Proxy", "received rules from the server");
-    debug(); // verificam
+    // debug(); // verificam
 
     printf("Proxy listening on htons(port %s), forwarding to %s:%s\n", client_port, server_ip, server_port);
 
@@ -465,7 +540,7 @@ int main(int argc, char* argv[]) {
         int client_socket;
         struct sockaddr_in client_addr;
         int client_size = sizeof(client_addr);
-
+        // printf("aici 1\n");
         // Accept an incoming connection from a client
         client_socket = accept(proxy_socket, (struct sockaddr*)&client_addr, &client_size);
         
@@ -476,7 +551,7 @@ int main(int argc, char* argv[]) {
 
         if(searchBlocked(inet_ntoa(client_addr.sin_addr), 1) == 0) {
         // Create a new thread to handle the client
-            //printf("aici 3\n");
+            // printf("aici 3\n");
             history(inet_ntoa(client_addr.sin_addr), "connected to the proxy");
             //history("Client", "connected to the proxy");
             Client *client = (Client *)malloc(sizeof(Client));
