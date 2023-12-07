@@ -8,7 +8,27 @@
 #include <signal.h>
 
 
-#define MAX_CLIENTS 3
+#define MAX_CLIENTS 1000
+
+//black list and replacing rules
+char** blockedIp;
+int blckip = 0;
+
+char** blockedMac;
+int blckmac = 0;
+
+struct replaceIp{
+    char** initialValue;
+    char** replacedValue;
+}ips; 
+int rplip =0;
+
+struct replaceBytes{
+    char** initialValue;
+    char** replacedValue;
+}rBytes; 
+int rplbytes=0;
+//
 
 int proxy_socket;
 int server_socket;
@@ -60,7 +80,7 @@ void initialize_waiting_list() {
 }
 
 int is_waiting_list_empty() {
-    debug("is_waiting_list_empty");
+    //debug("is_waiting_list_empty");
     return (waiting_list->front == -1 && waiting_list->rear == -1);
 }
 
@@ -89,6 +109,117 @@ Client* dequeue_waiting_client() {
 
     return client;
 }
+
+void printNow(char *Message) {
+    printf("GOT: %s\n", Message);
+}
+//set-up for server
+
+void getRules(int server_sock) {
+    // Receiving blocked ip addresses
+    int nr = 0;
+    int len;
+    char* server_message;
+    recv(server_sock, &nr, sizeof(int), 0);
+    printf("%d \n", nr);
+    //printNow(number);
+    if (nr > 0) {
+        for (int i = 0; i < nr; i++) {
+            recv(server_sock, &len, sizeof(int), 0);
+            printf("GOT: %d\t", len);
+            server_message = (char*) malloc((len+1) * sizeof(char));
+            recv(server_sock, server_message, len, 0);
+            printNow(server_message);
+            blockedIp = (char **)realloc(blockedIp, (blckip + 1) * sizeof(char *));
+            blockedIp[blckip] = strdup(server_message);
+            blckip++;
+
+            len = 0;
+            memset(server_message, '\0', sizeof(server_message));
+        }
+    }
+
+    printf("aici 1\n");
+    // Receiving blocked mac addresses
+    nr = 0;
+    //memset(number, '\0', sizeof(number));
+    recv(server_sock, &nr, sizeof(nr), 0);
+
+    if (nr > 0) {
+        for (int i = 0; i < nr; i++) {
+            recv(server_sock, &len, sizeof(len), 0);
+            printf("GOT: %d\t", len);
+            server_message = (char*) malloc((len + 1) * sizeof(char));
+            recv(server_sock, server_message, len, 0);
+            printNow(server_message);
+            blockedMac = (char **)realloc(blockedMac, (blckmac + 1) * sizeof(char *));
+            blockedMac[blckmac] = strdup(server_message);
+            blckmac++;
+
+            len = 0;
+            memset(server_message, '\0', sizeof(server_message));
+        }
+    }
+
+    printf("aici 2\n");
+
+    // Receiving bytes to replace
+    recv(server_sock, &nr, sizeof(int), 0);
+    if (nr > 0) {
+        for (int i = 0; i < nr; i++) {
+
+            recv(server_sock, &len, sizeof(len), 0);
+            
+            char *server_message = (char *)malloc((len + 1) * sizeof(char));
+            recv(server_sock, server_message, len, 0);
+                printNow(server_message);
+            server_message[len] = '\0';
+            rBytes.initialValue = (char **)realloc(rBytes.initialValue, (rplbytes + 1) * sizeof(char *));
+            rBytes.replacedValue = (char **)realloc(rBytes.replacedValue, (rplbytes + 1) * sizeof(char *));
+            //char *aux = strtok(server_message, "-");
+            
+            rBytes.initialValue[rplbytes] = strdup(strtok(server_message, "-"));
+            printf("SECV1 : %s\n", rBytes.initialValue[rplbytes]);
+
+            // Make a copy of the second token
+            rBytes.replacedValue[rplbytes] = strdup(strtok(NULL, "\0"));
+            printf("SECV2 : %s\n", rBytes.replacedValue[rplbytes]);
+            printf("SECV1 : %s\n", rBytes.initialValue[rplbytes]);
+            
+            rplbytes++;
+            
+            len = 0;
+            memset(server_message, '\0', sizeof(server_message));
+        }
+    }
+
+    printf("aici 3\n");
+}
+
+//end set-up
+
+//verify set up
+void debug()
+{
+    printf("Blocked ip %d:\n", blckip);
+    for(int i = 0; i < blckip; i++)
+        printf("%s\n", blockedIp[i]);
+    
+    printf("Blocked mac %d:\n", blckmac);
+    for(int i = 0; i < blckmac; i++)
+        printf("%s\n", blockedMac[i]);
+
+    printf("Replace ip %d:\n", rplip);
+    for(int i = 0; i < rplip; i++)
+        printf("%s %s\n", ips.initialValue[i], ips.replacedValue[i]);
+
+    printf("Replace bytes %d:\n", rplbytes);
+    for(int i = 0; i < rplbytes; i++) {
+        printf("%s ", rBytes.initialValue[i]);
+        printf("%s\n", rBytes.replacedValue[i]);
+    }
+}
+//end verify set up
 
 void *handle_client(void *arg) {
     Client *client = (Client *)arg;
@@ -216,6 +347,13 @@ int main(int argc, char* argv[]) {
         perror("Missing parameter");
         exit(-1);
     }
+    // Initialize arrays
+    blockedIp = (char**)malloc(sizeof(char*));
+    blockedMac = (char**)malloc(sizeof(char*));
+    ips.initialValue = (char**)malloc(sizeof(char*));
+    ips.replacedValue = (char**)malloc(sizeof(char*));
+    rBytes.initialValue = (char**)malloc(sizeof(char*));
+    rBytes.replacedValue = (char**)malloc(sizeof(char*));
 
     server_ip = argv[1];
     server_port = argv[2];
@@ -262,6 +400,9 @@ int main(int argc, char* argv[]) {
         printf("Unable to connect to the server\n");
         exit(-1);
     }
+
+    getRules(server_socket); //get rules and blacklist from server
+    debug(); // verificam
 
     printf("Proxy listening on htons(port %s), forwarding to %s:%s\n", client_port, server_ip, server_port);
 
