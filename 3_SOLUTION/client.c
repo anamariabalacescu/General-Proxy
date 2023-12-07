@@ -42,18 +42,6 @@ int main(int argc, char *argv[])
     }
     printf("Connected with server successfully\n");
 
-    if (recv(socket_desc, server_message, sizeof(server_message), 0) < 0)
-    {
-        printf("Error while receiving server's msg\n");
-        return -1;
-    }
-    printf("Server's response: %s\n", server_message);
-
-    if(strstr("You're  blocked",server_message)==0)
-    {
-        return 0;
-    }
-
     while (1)
     {
         memset(client_message, '\0', sizeof(client_message));
@@ -80,8 +68,6 @@ int main(int argc, char *argv[])
 
     // Close the socket:
     close(socket_desc);
-    
-
 
     return 0;
 }

@@ -6,9 +6,10 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <signal.h>
+#include <time.h>
 
 
-#define MAX_CLIENTS 3
+#define MAX_CLIENTS 1000
 
 //black list and replacing rules
 char** blockedIp;
@@ -139,7 +140,7 @@ void getRules(int server_sock) {
         }
     }
 
-    printf("aici 1\n");
+    //printf("aici 1\n");
     // Receiving blocked mac addresses
     nr = 0;
     //memset(number, '\0', sizeof(number));
@@ -161,7 +162,7 @@ void getRules(int server_sock) {
         }
     }
 
-    printf("aici 2\n");
+    //printf("aici 2\n");
 
     // Receiving bytes to replace
     recv(server_sock, &nr, sizeof(int), 0);
@@ -179,12 +180,12 @@ void getRules(int server_sock) {
             //char *aux = strtok(server_message, "-");
             
             rBytes.initialValue[rplbytes] = strdup(strtok(server_message, "-"));
-            printf("SECV1 : %s\n", rBytes.initialValue[rplbytes]);
+            //printf("SECV1 : %s\n", rBytes.initialValue[rplbytes]);
 
-            // Make a copy of the second token
+            // allocate memory + copy value
             rBytes.replacedValue[rplbytes] = strdup(strtok(NULL, "\0"));
-            printf("SECV2 : %s\n", rBytes.replacedValue[rplbytes]);
-            printf("SECV1 : %s\n", rBytes.initialValue[rplbytes]);
+            //printf("SECV2 : %s\n", rBytes.replacedValue[rplbytes]);
+            //printf("SECV1 : %s\n", rBytes.initialValue[rplbytes]);
             
             rplbytes++;
             
@@ -193,7 +194,7 @@ void getRules(int server_sock) {
         }
     }
 
-    printf("aici 3\n");
+    //printf("aici 3\n");
 }
 
 //end set-up
@@ -233,6 +234,8 @@ void *handle_client(void *arg) {
             printf("\nClient disconnected\n");
             client_count--;
 
+            history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
+
             // Try to dequeue a waiting client and handle it
             Client* waiting_client = dequeue_waiting_client();
             
@@ -251,50 +254,66 @@ void *handle_client(void *arg) {
 
             break;
         } else{
+            pthread_mutex_lock(&mutex);
             buffer[valread] = '\0';
             printf("\nClient(%d) message:\n",client->clientNumber);
+            history(inet_ntoa(client->address.sin_addr), "sent a packet to the proxy");
             hex_dump(buffer);
             aux = client;
-            pthread_mutex_lock(&mutex);
             printf("\nSelect (F) Forward, (D) Drop, (R) Replace Bytes\n");
             printf("Enter your choice for client(%d): ",client->clientNumber);
             char choice;
-            scanf("%c",&choice);
-            getchar();
-            
-            if (choice == 'F') {
-                // Forward message to server
-                send(server_socket, buffer, strlen(buffer), 0);
+            int ok = 0;
+            do{
+                scanf("%c",&choice);
+                getchar();
+                
+                if (choice == 'F') {
+                    ok = 1;
+                    // Forward message to server
+                    send(server_socket, buffer, strlen(buffer), 0);
 
-                // Receive the server's response
-                valread = recv(server_socket, buffer, sizeof(buffer), 0);
+                    history("Proxy", "forwarded the packet to the server");
+                    // Receive the server's response
+                    valread = recv(server_socket, buffer, sizeof(buffer), 0);
 
-                if (valread <= 0) {
-                    // Server disconnected
-                    close(client->socket);
-                    printf("Server disconnected\n");
-                    
-                    pthread_mutex_unlock(&mutex);
-                    break;
-                } else {
-                    buffer[valread] = '\0';
-                    printf("\nServer message to client(%d):\n", client->clientNumber);
-                    hex_dump(buffer);
+                    if (valread <= 0) {
+                        // Server disconnected
 
-                    // Send server message to client
+                        history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
+                        close(client->socket);
+                        printf("Server disconnected\n");
+                        
+                        pthread_mutex_unlock(&mutex);
+                        break;
+                    } else {
+                        buffer[valread] = '\0';
+                        printf("\nServer message to client(%d):\n", client->clientNumber);
+                        hex_dump(buffer);
+
+                        // Send server message to client
+                        send(client->socket, buffer, strlen(buffer), 0);
+                        pthread_mutex_unlock(&mutex);
+                    }
+                } else if (choice == 'D') {
+                    history("Proxy", "dropped the packet.");
+                    ok = 1;
+                    // Nothing to be done, server won't get the message
+                    printf("Packet dropped\n");
+                    memcpy(buffer, "Packet dropped \n", strlen("Packet dropped \n"));
                     send(client->socket, buffer, strlen(buffer), 0);
                     pthread_mutex_unlock(&mutex);
+                } else if (choice == 'R') {
+                    history("Proxy", "replaces bytes");
+                    ok =1;
+                    //TO DO
+                    pthread_mutex_unlock(&mutex);
+                } else{
+                    history("Proxy", "attempted harmful action.");
+                    printf("Wrong choice. Try again.\n");
+                    printf("Select (F) Forward, (D) Drop, (R) Replace Bytes\n");
                 }
-            } else if (choice == 'D') {
-                // Nothing to be done, server won't get the message
-                printf("Packet dropped\n");
-                memcpy(buffer, "Packet dropped \n", strlen("Packet dropped \n"));
-                send(client->socket, buffer, strlen(buffer), 0);
-                pthread_mutex_unlock(&mutex);
-            } else if (choice == 'R') {
-                //TO DO
-                pthread_mutex_unlock(&mutex);
-            }
+            }while(ok == 0);
             // Forward the server's response to the client
             //send(client->socket, buffer, strlen(buffer), 0);
         }
@@ -344,14 +363,36 @@ void hex_dump(const char* message) {
 
 int searchBlocked(char *add, int type){
     if(type == 1){
+        //printf("aici\n");
         //search ip
         for(int i = 0; i < blckip; i++)
-            if(strcmp(blockedIp[i], add) == 0){
-                printf("aici\n");
+            if(strstr(blockedIp[i], add) != NULL){
+                //printf("aici\n");
                 return 1;
             }
         return 0;
     }
+}
+
+void history(const char* maker, const char* action) {
+    FILE *file = fopen("historylog.txt", "a");
+    if (file == NULL) {
+        perror("Error opening historylog.txt");
+        exit(EXIT_FAILURE);
+    }
+
+    // Get current timestamp
+    time_t t = time(NULL);
+    struct tm* tm_info = localtime(&t);
+
+    // Format timestamp as string
+    char timestamp[20];
+    strftime(timestamp, sizeof(timestamp), "%d/%m/%Y %H:%M", tm_info);
+
+    // Write log entry to file
+    fprintf(file, "%s %s.\t\t%s\n", maker, action, timestamp);
+
+    fclose(file);
 }
 
 int main(int argc, char* argv[]) {
@@ -413,7 +454,9 @@ int main(int argc, char* argv[]) {
         exit(-1);
     }
 
+    history("Proxy", "connected to the server");
     getRules(server_socket); //get rules and blacklist from server
+    history("Proxy", "received rules from the server");
     debug(); // verificam
 
     printf("Proxy listening on htons(port %s), forwarding to %s:%s\n", client_port, server_ip, server_port);
@@ -432,9 +475,10 @@ int main(int argc, char* argv[]) {
         }
 
         if(searchBlocked(inet_ntoa(client_addr.sin_addr), 1) == 0) {
-
-            send(client_socket, "You're connected", strlen("You're connected"), 0);
         // Create a new thread to handle the client
+            //printf("aici 3\n");
+            history(inet_ntoa(client_addr.sin_addr), "connected to the proxy");
+            //history("Client", "connected to the proxy");
             Client *client = (Client *)malloc(sizeof(Client));
             client->socket = client_socket;
             client->address = client_addr;
@@ -459,7 +503,8 @@ int main(int argc, char* argv[]) {
                 enqueue_waiting_client(client);
             }
         } else{ 
-            send(client_socket, "You're blocked", strlen("You're blocked"), 0);
+            //printf("aici 2\n");
+            history(inet_ntoa(client_addr.sin_addr), "blocked by the proxy");
             printf("Blocked ip: %s\n", inet_ntoa(client_addr.sin_addr));
             close(client_socket);
         }

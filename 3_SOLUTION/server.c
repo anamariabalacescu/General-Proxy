@@ -307,7 +307,7 @@ int main(int argc, char* argv[]) {
     // Set port and IP that we'll be listening for, any other IP_SRC or port will be dropped:
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(atoi(argv[1]));
-    server_addr.sin_addr.s_addr = inet_addr("192.168.1.112");
+    server_addr.sin_addr.s_addr = inet_addr("192.168.0.157");
 
     // Bind to the set port and IP:
     if(bind(socket_desc, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
