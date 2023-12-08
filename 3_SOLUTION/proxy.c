@@ -117,22 +117,8 @@ Client* dequeue_waiting_client() {
 void printNow(char *Message) {
     printf("GOT: %s\n", Message);
 }
+
 //set-up for server
-
-// char *makeOneString(char *s1, char *s2) {
-//     char *string = malloc(strlen(s1) + strlen(s2) + 2); // +2 for the '-' and '\0'
-//     if (string == NULL) {
-//         perror("malloc failed");
-//         exit(-1);
-//     }
-
-//     strcpy(string, s1);
-//     strcat(string, "-");
-//     strcat(string, s2);
-
-//     return string;
-// }
-
 void getRules(const char* filepath) {
     blockedIp = (char**)malloc(sizeof(char*));
     blockedMac = (char**)malloc(sizeof(char*));
@@ -151,16 +137,6 @@ void getRules(const char* filepath) {
 
     char* buf = (char*)malloc(sizeof(char)*linechar);
     ssize_t bytes_read;
- 
-    //buf = malloc((linechar + 1) * sizeof(char));
-    /* read the last 100 characthers */
-    //bytes_read = read(f, buf, linechar);
-
-    // if(bytes_read == 0)
-    // {
-    //     perror("File is empty");
-    //     exit(-1);
-    // }
 
     int caz = -1;
     //cases: 1 - ip blocked, 2 - mac blocked, 3 - replace ip, 4 - replace bytes
@@ -296,6 +272,98 @@ void debug()
 }
 //end verify set up
 
+
+char* charToHex(const char* input) {
+    size_t len = strlen(input);
+    char* hex = (char*)malloc(2 * len + 1);
+
+    for (size_t i = 0; i < len; ++i) {
+        sprintf(hex + 2 * i, "%02X", input[i]);
+    }
+
+    hex[2 * len] = '\0';
+    return hex;
+}
+
+char* replaceBytes(const char* message) {
+    char* hexMessage = charToHex(message);
+
+    size_t hexLen = strlen(hexMessage);
+
+    for (size_t i = 0; i < hexLen; i += 2) {
+        for (int j = 0; j < rplbytes; ++j) {
+            if (strncmp(hexMessage + i, rBytes.initialValue[j], 2) == 0) {
+                strncpy(hexMessage + i, rBytes.replacedValue[j], 2);
+                break;
+            }
+        }
+    }
+
+    return hexMessage;
+}
+
+char* replaceCustomBytes(const char* message, const char* bytes2Replace, const char* replacement) {
+    if (message == NULL || bytes2Replace == NULL || replacement == NULL) {
+        perror("Invalid arguments");
+        exit(-1);
+    }
+
+    size_t messageLength = strlen(message);
+    size_t bytes2ReplaceLength = strlen(bytes2Replace);
+    size_t replacementLength = strlen(replacement);
+    
+    //printNow("la replace\n");
+
+    char* result = (char*)malloc((messageLength + 1) * sizeof(char));
+    if (result == NULL) {
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    size_t i, j, k;
+
+    for (i = 0; i < messageLength; ++i) {
+        if (strncmp(&message[i], bytes2Replace, bytes2ReplaceLength) == 0) {
+            //printNow("am intrat in comparatie\n");
+            for (j = 0; j < replacementLength; ++j) {
+                result[i + j] = replacement[j];
+            }
+            i += bytes2ReplaceLength - 1;
+        } else {
+            result[i] = message[i];
+        }
+    }
+    result[i] = '\0';
+
+    //printNow("am iesit din for\n");
+
+    history("Proxy","has replaced bytes as dictated in CLI");
+
+    return result;
+}
+
+char* hexToAscii(const char* hex) {
+    size_t hex_len = strlen(hex);
+    if (hex_len % 2 != 0) {
+        // Invalid hex string
+        return NULL;
+    }
+
+    //printNow("la hex to ascii\n");
+
+    size_t ascii_len = hex_len / 2;
+    char* ascii = (char*)malloc(ascii_len + 1);
+
+    for (size_t i = 0; i < ascii_len; ++i) {
+        //printf("Se calculeaza traducerea in ascii\n");
+        sscanf(hex + 2 * i, "%2hhX", &ascii[i]);
+    }
+
+    //printNow("gata");
+    ascii[ascii_len] = '\0';
+    return ascii;
+}
+
 void *handle_client(void *arg) {
     Client *client = (Client *)arg;
     char buffer[2000];
@@ -334,7 +402,7 @@ void *handle_client(void *arg) {
             history(inet_ntoa(client->address.sin_addr), "sent a packet to the proxy");
             hex_dump(buffer);
             aux = client;
-            printf("\nSelect (F) Forward, (D) Drop, (R) Replace Bytes\n");
+            printf("\nSelect (F) Forward, (D) Drop, (R) Replace Bytes, (C) Custom replace bytes\n");
             printf("Enter your choice for client(%d): ",client->clientNumber);
             char choice;
             int ok = 0;
@@ -378,14 +446,67 @@ void *handle_client(void *arg) {
                     send(client->socket, buffer, strlen(buffer), 0);
                     pthread_mutex_unlock(&mutex);
                 } else if (choice == 'R') {
-                    history("Proxy", "replaces bytes");
+                    //history("Proxy", "replaces bytes");
                     ok =1;
                     //TO DO
                     pthread_mutex_unlock(&mutex);
-                } else{
+                } else if (choice == 'C') {
+                    ok =1;
+                    size_t len = strlen(buffer);
+                    char* hex = (char*)malloc(2 * len + 1);
+                    hex = charToHex(buffer);
+                    
+                    printf("Enter the bytes to be replaced: ");
+                    char c;
+                    char* bytes2Replace = (char*)malloc(sizeof(char));
+                    int chn = 0;
+                    while((c = getchar()) != '\n') {
+                        bytes2Replace[chn++] = c;
+                        bytes2Replace = (char*)realloc(bytes2Replace, (chn + 1) * sizeof(char));
+                    }
+                    bytes2Replace[chn] = '\0';
+
+                    printf("Enter the bytes for replacement: ");
+                    char* replacement = (char*)malloc(sizeof(char));
+                    chn = 0;
+                    while((c = getchar()) != '\n') {
+                        replacement[chn++] = c;
+                        replacement = (char*)realloc(replacement, (chn + 1) * sizeof(char));
+                    }
+                    replacement[chn] = '\0';
+                    
+                    //printNow(hex);
+
+                    char* replacedHex = (char*)malloc(2 * len + 1 + strlen(replacement) - strlen(bytes2Replace) + 1);
+                    replacedHex= replaceCustomBytes(hex, bytes2Replace, replacement);
+                    //printNow(replacedHex);
+
+                    char* ascii = (char*)malloc(len + 1);
+                    ascii = hexToAscii(replacedHex);
+                    //printNow(ascii);
+
+                    printf("Replaced message: %s\n");
+                    hex_dump(ascii);
+
+                    // Forward message to server
+                    send(server_socket, ascii, strlen(ascii), 0);
+                    history("Proxy", "forwarded the packet to the server");
+
+                    int valread = recv(server_socket, buffer, sizeof(buffer), 0);
+                    buffer[valread] = '\0';
+
+                    printf("\nServer message to client(%d):\n", client->clientNumber);
+                    hex_dump(buffer);
+                    history("Server", "sent a response packet to the proxy");
+                    // Send server message to client
+                    send(client->socket, buffer, strlen(buffer), 0);
+                    history("Proxy", "forwarded the packet to the client");
+
+                    pthread_mutex_unlock(&mutex);
+                }else{
                     history("Proxy", "attempted harmful action.");
                     printf("Wrong choice. Try again.\n");
-                    printf("Select (F) Forward, (D) Drop, (R) Replace Bytes\n");
+                    printf("Select (F) Forward, (D) Drop, (R) Replace Bytes, (C) Custom replace bytes\n");
                 }
             }while(ok == 0);
             // Forward the server's response to the client
