@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <time.h>
 #include <fcntl.h>
+#include <regex.h>
 
 #define MAX_CLIENTS 1000
 
@@ -21,11 +22,8 @@ int blckip = 0;
 char** blockedMac;
 int blckmac = 0;
 
-struct replaceIp{
-    char** initialValue;
-    char** replacedValue;
-}ips; 
-int rplip =0;
+char** protocols;
+int prot_no =0;
 
 struct replaceBytes{
     char** initialValue;
@@ -122,8 +120,7 @@ void printNow(char *Message) {
 void getRules(const char* filepath) {
     blockedIp = (char**)malloc(sizeof(char*));
     blockedMac = (char**)malloc(sizeof(char*));
-    ips.initialValue = (char**)malloc(sizeof(char*));
-    ips.replacedValue = (char**)malloc(sizeof(char*));
+    protocols = (char**)malloc(sizeof(char*));
     rBytes.initialValue = (char**)malloc(sizeof(char*));
     rBytes.replacedValue = (char**)malloc(sizeof(char*));
 
@@ -165,7 +162,7 @@ void getRules(const char* filepath) {
         
         if(ok == 1)
         {
-            if(strstr(buf, "ipr"))
+            if(strstr(buf, "prot"))
                 caz = 3;
             else {
                 if(strstr(buf, "mac"))
@@ -194,15 +191,10 @@ void getRules(const char* filepath) {
                                     blckmac++;
                                     break;
                                 case 3:
-                                    ips.initialValue = (char**)realloc(ips.initialValue, sizeof(char) * (rplip + 1));
-                                    ips.replacedValue = (char**)realloc(ips.replacedValue, sizeof(char) * (rplip + 1));
-                                    ips.initialValue[rplip] = (char*)malloc(sizeof(char)*(strlen(buf)+1));
-                                    ips.replacedValue[rplip] = (char*)malloc(sizeof(char)*(strlen(buf)+1));
-                                    char* ip1 = strtok(buf, "-");
-                                    char* ip2 = strtok(NULL, "\n");
-                                    strcpy(ips.initialValue[rplip], ip1);
-                                    strcpy(ips.replacedValue[rplip], ip2);
-                                    rplip++;
+                                    protocols = (char**)realloc(protocols, (prot_no + 1)*sizeof(char*));
+                                    protocols[prot_no] = (char*)malloc(sizeof(char)*(strlen(buf)+1));
+                                    strcpy(protocols[prot_no], buf);
+                                    prot_no++;
                                     break;
                                 case 4:
                                     rBytes.initialValue = (char**)realloc(rBytes.initialValue, sizeof(char) * (rplbytes + 1));
@@ -237,9 +229,9 @@ void getRules(const char* filepath) {
     for(int i = 0; i < blckmac; i++)
         printf("%s\n", blockedMac[i]);
 
-    printf("Replace ip:\n");
-    for(int i = 0; i < rplip; i++)
-        printf("%s %s\n", ips.initialValue[i], ips.replacedValue[i]);
+    printf("Protocols for detection:\n");
+    for(int i = 0; i < prot_no; i++)
+        printf("%s\n", protocols[i]);
 
     printf("Replace bytes:\n");
     for(int i = 0; i < rplbytes; i++)
@@ -260,9 +252,9 @@ void debug()
     for(int i = 0; i < blckmac; i++)
         printf("%s\n", blockedMac[i]);
 
-    printf("Replace ip %d:\n", rplip);
-    for(int i = 0; i < rplip; i++)
-        printf("%s %s\n", ips.initialValue[i], ips.replacedValue[i]);
+    printf("Replace ip %d:\n", protocols);
+    for(int i = 0; i < prot_no; i++)
+        printf("%s %s\n", protocols[i]);
 
     printf("Replace bytes %d:\n", rplbytes);
     for(int i = 0; i < rplbytes; i++) {
@@ -277,7 +269,7 @@ char* charToHex(const char* input) {
     size_t len = strlen(input);
     char* hex = (char*)malloc(2 * len + 1);
 
-    for (size_t i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; i++) {
         sprintf(hex + 2 * i, "%02X", input[i]);
     }
 
@@ -291,7 +283,7 @@ char* replaceBytes(const char* message) {
     size_t hexLen = strlen(hexMessage);
 
     for (size_t i = 0; i < hexLen; i += 2) {
-        for (int j = 0; j < rplbytes; ++j) {
+        for (int j = 0; j < rplbytes; j++) {
             if (strncmp(hexMessage + i, rBytes.initialValue[j], 2) == 0) {
                 strncpy(hexMessage + i, rBytes.replacedValue[j], 2);
                 break;
@@ -322,11 +314,13 @@ char* replaceCustomBytes(const char* message, const char* bytes2Replace, const c
 
     size_t i, j, k;
 
-    for (i = 0; i < messageLength; ++i) {
-        if (strncmp(&message[i], bytes2Replace, bytes2ReplaceLength) == 0) {
+    int found = 0;
+    for (i = 0; i < messageLength; i++) {
+        if (strncmp(&message[i], bytes2Replace, bytes2ReplaceLength) == 0 && found == 0) {
             //printNow("am intrat in comparatie\n");
-            for (j = 0; j < replacementLength; ++j) {
+            for (j = 0; j < replacementLength; j++) {
                 result[i + j] = replacement[j];
+                found = 1;
             }
             i += bytes2ReplaceLength - 1;
         } else {
@@ -349,19 +343,51 @@ char* hexToAscii(const char* hex) {
         return NULL;
     }
 
-    //printNow("la hex to ascii\n");
+   printNow("la hex to ascii\n");
 
     size_t ascii_len = hex_len / 2;
     char* ascii = (char*)malloc(ascii_len + 1);
 
-    for (size_t i = 0; i < ascii_len; ++i) {
-        //printf("Se calculeaza traducerea in ascii\n");
-        sscanf(hex + 2 * i, "%2hhX", &ascii[i]);
+    for (size_t i = 0; i < ascii_len; i++) {
+        printf("Se calculeaza traducerea in ascii\n");
+        if(2*i < hex_len)
+            sscanf(hex + 2 * i, "%2hhX", &ascii[i]);
     }
 
-    //printNow("gata");
+    printNow("gata");
     ascii[ascii_len] = '\0';
     return ascii;
+}
+
+int protIsValid(char* message)
+{
+    for (int i = 0; i < prot_no; i++) {
+        regex_t regex;
+        int ret;
+
+        // Compile the regular expression
+        ret = regcomp(&regex, protocols[i], REG_EXTENDED);
+        if (ret != 0) {
+            fprintf(stderr, "Error compiling regex for protocol %d\n", i + 1);
+            return -1;  // Error code
+        }
+
+        // Execute the regular expression match
+        ret = regexec(&regex, message, 0, NULL, 0);
+        regfree(&regex);
+
+        if (ret == 0) {
+            // Match found
+            return 1;
+        } else if (ret != REG_NOMATCH) {
+            // Error in matching
+            fprintf(stderr, "Error matching regex for protocol %d\n", i + 1);
+            return -1;  // Error code
+        }
+    }
+
+    // No match found
+    return 0;
 }
 
 void *handle_client(void *arg) {
@@ -371,146 +397,180 @@ void *handle_client(void *arg) {
     
     while (1) {
         valread = read(client->socket, buffer, sizeof(buffer));
-        if (valread <= 0) {
-            // Client disconnected
-            printf("\nClient disconnected\n");
-            client_count--;
 
-            history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
-
-            // Try to dequeue a waiting client and handle it
-            Client* waiting_client = dequeue_waiting_client();
-            
-            if (waiting_client != NULL) {
-                printf("Handling waiting client(%d)\n", waiting_client->clientNumber);
-
-                client->socket = waiting_client->socket;
-                client->address = waiting_client->address;
-                client->clientNumber = waiting_client->clientNumber;
-
-                free(waiting_client);
-                client_count++;         
-            } else{
-                printf("No waiting clients\n");
-            }
-
-            break;
-        } else{
-            pthread_mutex_lock(&mutex);
-            buffer[valread] = '\0';
-            printf("\nClient(%d) message:\n",client->clientNumber);
-            history(inet_ntoa(client->address.sin_addr), "sent a packet to the proxy");
+        if(protIsValid(buffer) == 1)
+        {
+            printf("Client message: \n");
             hex_dump(buffer);
-            aux = client;
-            printf("\nSelect (F) Forward, (D) Drop, (R) Replace Bytes, (C) Custom replace bytes\n");
-            printf("Enter your choice for client(%d): ",client->clientNumber);
-            char choice;
-            int ok = 0;
-            do{
-                scanf("%c",&choice);
-                getchar();
+            pthread_mutex_lock(&mutex);
+            send(server_socket, buffer, strlen(buffer), 0);
+
+            history("Proxy", "forwarded the packet to the server");
+            // Receive the server's response
+            valread = recv(server_socket, buffer, sizeof(buffer), 0);
+
+            if (valread <= 0) {
+                // Server disconnected
+
+                history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
+                close(client->socket);
+                printf("Server disconnected\n");
                 
-                if (choice == 'F') {
-                    ok = 1;
-                    // Forward message to server
-                    send(server_socket, buffer, strlen(buffer), 0);
+                pthread_mutex_unlock(&mutex);
+            } else {
+                buffer[valread] = '\0';
+                printf("\nServer message to client(%d):\n", client->clientNumber);
+                hex_dump(buffer);
 
-                    history("Proxy", "forwarded the packet to the server");
-                    // Receive the server's response
-                    valread = recv(server_socket, buffer, sizeof(buffer), 0);
+                // Send server message to client
+                send(client->socket, buffer, strlen(buffer), 0);
+                pthread_mutex_unlock(&mutex);
+            }
+        } else {
+                
+            if (valread <= 0) {
+                // Client disconnected
+                printf("\nClient disconnected\n");
+                client_count--;
 
-                    if (valread <= 0) {
-                        // Server disconnected
+                history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
 
-                        history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
-                        close(client->socket);
-                        printf("Server disconnected\n");
-                        
-                        pthread_mutex_unlock(&mutex);
-                        break;
-                    } else {
-                        buffer[valread] = '\0';
-                        printf("\nServer message to client(%d):\n", client->clientNumber);
-                        hex_dump(buffer);
+                // Try to dequeue a waiting client and handle it
+                Client* waiting_client = dequeue_waiting_client();
+                
+                if (waiting_client != NULL) {
+                    printf("Handling waiting client(%d)\n", waiting_client->clientNumber);
 
-                        // Send server message to client
+                    client->socket = waiting_client->socket;
+                    client->address = waiting_client->address;
+                    client->clientNumber = waiting_client->clientNumber;
+
+                    free(waiting_client);
+                    client_count++;         
+                } else{
+                    printf("No waiting clients\n");
+                }
+
+                break;
+            } else{
+                pthread_mutex_lock(&mutex);
+                buffer[valread] = '\0';
+                printf("\nClient(%d) message:\n",client->clientNumber);
+                history(inet_ntoa(client->address.sin_addr), "sent a packet to the proxy");
+                hex_dump(buffer);
+                aux = client;
+                printf("\nSelect (F) Forward, (D) Drop, (R) Replace Bytes, (C) Custom replace bytes\n");
+                printf("Enter your choice for client(%d): ",client->clientNumber);
+                char choice;
+                int ok = 0;
+                do{
+                    scanf("%c",&choice);
+                    getchar();
+                    
+                    if (choice == 'F') {
+                        ok = 1;
+                        // Forward message to server
+                        send(server_socket, buffer, strlen(buffer), 0);
+
+                        history("Proxy", "forwarded the packet to the server");
+                        // Receive the server's response
+                        valread = recv(server_socket, buffer, sizeof(buffer), 0);
+
+                        if (valread <= 0) {
+                            // Server disconnected
+
+                            history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
+                            close(client->socket);
+                            printf("Server disconnected\n");
+                            
+                            pthread_mutex_unlock(&mutex);
+                            break;
+                        } else {
+                            buffer[valread] = '\0';
+                            printf("\nServer message to client(%d):\n", client->clientNumber);
+                            hex_dump(buffer);
+
+                            // Send server message to client
+                            send(client->socket, buffer, strlen(buffer), 0);
+                            pthread_mutex_unlock(&mutex);
+                        }
+                    } else if (choice == 'D') {
+                        history("Proxy", "dropped the packet.");
+                        ok = 1;
+                        // Nothing to be done, server won't get the message
+                        printf("Packet dropped\n");
+                        memcpy(buffer, "Packet dropped \n", strlen("Packet dropped \n"));
                         send(client->socket, buffer, strlen(buffer), 0);
                         pthread_mutex_unlock(&mutex);
+                    } else if (choice == 'R') {
+                        //history("Proxy", "replaces bytes");
+                        ok =1;
+                        //TO DO
+                        pthread_mutex_unlock(&mutex);
+                    } else if (choice == 'C') {
+                        ok =1;
+                        size_t len = strlen(buffer);
+                        char* hex = (char*)malloc(2 * len + 1);
+                        hex = charToHex(buffer);
+                        
+                        printf("Enter the bytes to be replaced: ");
+                        char c;
+                        char* bytes2Replace = (char*)malloc(sizeof(char));
+                        int chn = 0;
+                        while((c = getchar()) != '\n') {
+                            bytes2Replace[chn++] = c;
+                            bytes2Replace = (char*)realloc(bytes2Replace, (chn + 1) * sizeof(char));
+                        }
+                        bytes2Replace[chn] = '\0';
+
+                        printf("Enter the bytes for replacement: ");
+                        char* replacement = (char*)malloc(sizeof(char));
+                        chn = 0;
+                        while((c = getchar()) != '\n') {
+                            replacement[chn++] = c;
+                            replacement = (char*)realloc(replacement, (chn + 1) * sizeof(char));
+                        }
+                        replacement[chn] = '\0';
+                        
+                        //printNow(hex);
+
+                        char* replacedHex = (char*)malloc(2 * len + 1 + strlen(replacement) - strlen(bytes2Replace) + 1);
+                        replacedHex= replaceCustomBytes(hex, bytes2Replace, replacement);
+                        //printNow(replacedHex);
+
+                        char* ascii = (char*)malloc(len + 1 + (strlen(replacement) - strlen(bytes2Replace))/2 + 1);
+                        printf("Size of ascii: %ld\n", sizeof(ascii));
+                        printf("Size of replacedHex: %ld\n", sizeof(replacedHex));
+                        ascii = hexToAscii(replacedHex);
+                        //printNow(ascii);
+
+                        printf("Replaced message: %s\n");
+                        hex_dump(ascii);
+
+                        // Forward message to server
+                        send(server_socket, ascii, strlen(ascii), 0);
+                        history("Proxy", "forwarded the packet to the server");
+
+                        int valread = recv(server_socket, buffer, sizeof(buffer), 0);
+                        buffer[valread] = '\0';
+
+                        printf("\nServer message to client(%d):\n", client->clientNumber);
+                        hex_dump(buffer);
+                        history("Server", "sent a response packet to the proxy");
+                        // Send server message to client
+                        send(client->socket, buffer, strlen(buffer), 0);
+                        history("Proxy", "forwarded the packet to the client");
+
+                        pthread_mutex_unlock(&mutex);
+                    }else{
+                        history("Proxy", "attempted harmful action.");
+                        printf("Wrong choice. Try again.\n");
+                        printf("Select (F) Forward, (D) Drop, (R) Replace Bytes, (C) Custom replace bytes\n");
                     }
-                } else if (choice == 'D') {
-                    history("Proxy", "dropped the packet.");
-                    ok = 1;
-                    // Nothing to be done, server won't get the message
-                    printf("Packet dropped\n");
-                    memcpy(buffer, "Packet dropped \n", strlen("Packet dropped \n"));
-                    send(client->socket, buffer, strlen(buffer), 0);
-                    pthread_mutex_unlock(&mutex);
-                } else if (choice == 'R') {
-                    //history("Proxy", "replaces bytes");
-                    ok =1;
-                    //TO DO
-                    pthread_mutex_unlock(&mutex);
-                } else if (choice == 'C') {
-                    ok =1;
-                    size_t len = strlen(buffer);
-                    char* hex = (char*)malloc(2 * len + 1);
-                    hex = charToHex(buffer);
-                    
-                    printf("Enter the bytes to be replaced: ");
-                    char c;
-                    char* bytes2Replace = (char*)malloc(sizeof(char));
-                    int chn = 0;
-                    while((c = getchar()) != '\n') {
-                        bytes2Replace[chn++] = c;
-                        bytes2Replace = (char*)realloc(bytes2Replace, (chn + 1) * sizeof(char));
-                    }
-                    bytes2Replace[chn] = '\0';
-
-                    printf("Enter the bytes for replacement: ");
-                    char* replacement = (char*)malloc(sizeof(char));
-                    chn = 0;
-                    while((c = getchar()) != '\n') {
-                        replacement[chn++] = c;
-                        replacement = (char*)realloc(replacement, (chn + 1) * sizeof(char));
-                    }
-                    replacement[chn] = '\0';
-                    
-                    //printNow(hex);
-
-                    char* replacedHex = (char*)malloc(2 * len + 1 + strlen(replacement) - strlen(bytes2Replace) + 1);
-                    replacedHex= replaceCustomBytes(hex, bytes2Replace, replacement);
-                    //printNow(replacedHex);
-
-                    char* ascii = (char*)malloc(len + 1);
-                    ascii = hexToAscii(replacedHex);
-                    //printNow(ascii);
-
-                    printf("Replaced message: %s\n");
-                    hex_dump(ascii);
-
-                    // Forward message to server
-                    send(server_socket, ascii, strlen(ascii), 0);
-                    history("Proxy", "forwarded the packet to the server");
-
-                    int valread = recv(server_socket, buffer, sizeof(buffer), 0);
-                    buffer[valread] = '\0';
-
-                    printf("\nServer message to client(%d):\n", client->clientNumber);
-                    hex_dump(buffer);
-                    history("Server", "sent a response packet to the proxy");
-                    // Send server message to client
-                    send(client->socket, buffer, strlen(buffer), 0);
-                    history("Proxy", "forwarded the packet to the client");
-
-                    pthread_mutex_unlock(&mutex);
-                }else{
-                    history("Proxy", "attempted harmful action.");
-                    printf("Wrong choice. Try again.\n");
-                    printf("Select (F) Forward, (D) Drop, (R) Replace Bytes, (C) Custom replace bytes\n");
-                }
-            }while(ok == 0);
-            // Forward the server's response to the client
-            //send(client->socket, buffer, strlen(buffer), 0);
+                }while(ok == 0);
+                // Forward the server's response to the client
+                //send(client->socket, buffer, strlen(buffer), 0);
+            }
         }
     }
 
@@ -599,8 +659,7 @@ int main(int argc, char* argv[]) {
     // Initialize arrays
     blockedIp = (char**)malloc(sizeof(char*));
     blockedMac = (char**)malloc(sizeof(char*));
-    ips.initialValue = (char**)malloc(sizeof(char*));
-    ips.replacedValue = (char**)malloc(sizeof(char*));
+    protocols = (char**)malloc(sizeof(char*));
     rBytes.initialValue = (char**)malloc(sizeof(char*));
     rBytes.replacedValue = (char**)malloc(sizeof(char*));
 
