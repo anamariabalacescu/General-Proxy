@@ -63,6 +63,65 @@ typedef struct {
 
 WaitingList* waiting_list;
 
+//detectie protocoale
+typedef struct{
+    char* name;
+    char* regex;
+}protocol;
+
+protocol* prots;
+
+void initialize_protocols() {
+    prots = (protocol*)malloc(100 * sizeof(protocol));
+
+    prots[0].name = (char*)malloc(5 * sizeof(char));
+    memcpy(prots[0].name, "HTTP", 5);
+    prots[0].regex = (char*)malloc(22 * sizeof(char));
+    memcpy(prots[0].regex, "^GET http://www.+ HTTP.+", 22);
+
+    prots[1].name = (char*)malloc(5 * sizeof(char));
+    memcpy(prots[1].name, "HTTP", 5);
+    prots[1].regex = (char*)malloc(27 * sizeof(char));
+    memcpy(prots[1].regex, "^POST /submit-form HTTP/1.1", 27);
+
+    prots[2].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[2].name, "SSH", 4);
+    prots[2].regex = (char*) malloc(29 * sizeof(char));
+    memcpy(prots[2].regex, "^SSH-[0-9]+.[0-9]+-OpenSSH.*", 29);
+}
+
+char* whatprotocol(char *message, Client *c) {
+    if(ntohs(c->address.sin_port) == 22)
+        return "SSH";
+
+    for (int i = 0; i < 3; i++) {
+        
+        regex_t regex2;
+        int aux;
+
+        // Compile the regular expression
+        printf("%s\t", prots[i].regex);
+        printf("%s\n", prots[i].regex);
+        aux = regcomp(&regex2, prots[i].regex, REG_EXTENDED);
+
+        if (aux != 0) {
+            fprintf(stderr, "Error compiling regex for protocol %d\n", i + 1);
+            return "TCP protocol";  // Error code
+        }
+
+        // Execute the regular expression match
+        aux = regexec(&regex2, message, 0, NULL, 0);
+
+        regfree(&regex2);
+
+        if (aux == 0) {
+            // Match found
+            return prots[i].name;
+        }
+    }
+    return "TCP protocol";
+}
+
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_t threads[MAX_CLIENTS];
 
@@ -422,11 +481,11 @@ void *handle_client(void *arg) {
     
     while (1) {
         valread = read(client->socket, buffer, sizeof(buffer));
-        
+
         if(protIsValid(buffer) == 1)
         {
             printf("Client message: \n");
-            hex_dump(buffer);
+            hex_dump(buffer, client);
             pthread_mutex_lock(&mutex);
             send(server_socket, buffer, strlen(buffer), 0);
 
@@ -445,7 +504,7 @@ void *handle_client(void *arg) {
             } else {
                 buffer[valread] = '\0';
                 printf("\nServer message to client(%d):\n", client->clientNumber);
-                hex_dump(buffer);
+                hex_dump(buffer, client);
 
                 // Send server message to client
                 send(client->socket, buffer, strlen(buffer), 0);
@@ -481,7 +540,7 @@ void *handle_client(void *arg) {
                 buffer[valread] = '\0';
                 printf("\nClient(%d) message:\n",client->clientNumber);
                 history(inet_ntoa(client->address.sin_addr), "sent a packet to the proxy");
-                hex_dump(buffer);
+                hex_dump(buffer, client);
                 aux = client;
                 printf("\nSelect (F) Forward, (D) Drop, (R) Replace Bytes, (C) Custom replace bytes\n");
                 printf("Enter your choice for client(%d): ",client->clientNumber);
@@ -512,7 +571,7 @@ void *handle_client(void *arg) {
                         } else {
                             buffer[valread] = '\0';
                             printf("\nServer message to client(%d):\n", client->clientNumber);
-                            hex_dump(buffer);
+                            hex_dump(buffer, client);
 
                             // Send server message to client
                             send(client->socket, buffer, strlen(buffer), 0);
@@ -574,7 +633,7 @@ void *handle_client(void *arg) {
                         //printNow(ascii);
 
                         printf("Replaced message: %s\n");
-                        hex_dump(ascii);
+                        hex_dump(ascii, client);
 
                         // Forward message to server
                         send(server_socket, ascii, strlen(ascii), 0);
@@ -584,7 +643,7 @@ void *handle_client(void *arg) {
                         buffer[valread] = '\0';
 
                         printf("\nServer message to client(%d):\n", client->clientNumber);
-                        hex_dump(buffer);
+                        hex_dump(buffer, client);
                         history("Server", "sent a response packet to the proxy");
                         // Send server message to client
                         send(client->socket, buffer, strlen(buffer), 0);
@@ -608,9 +667,12 @@ void *handle_client(void *arg) {
     pthread_exit(NULL);
 }
 
-void hex_dump(const char* message) {
+void hex_dump(const char* message, Client *c) {
     ssize_t length = strlen(message);
     size_t i, j;
+    char *numeProtocol = (char*)malloc(20 * sizeof(char));
+    numeProtocol = whatprotocol(message, c);
+    printf("Protocol: %s\n", numeProtocol);
 
     for (i = 0; i < length; i += 16) {
         // address offset
@@ -694,6 +756,7 @@ int main(int argc, char* argv[]) {
     rBytes.replacedValue = (char**)malloc(sizeof(char*));
 
     getRules(argv[4]);
+    initialize_protocols();
 
     server_ip = argv[1];
     server_port = argv[2];
