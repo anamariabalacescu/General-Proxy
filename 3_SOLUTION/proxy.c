@@ -88,13 +88,45 @@ void initialize_protocols() {
     memcpy(prots[2].name, "SSH", 4);
     prots[2].regex = (char*) malloc(29 * sizeof(char));
     memcpy(prots[2].regex, "^SSH-[0-9]+.[0-9]+-OpenSSH.*", 29);
+
+    prots[3].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[3].name, "FTP", 4);
+    prots[3].regex = (char*) malloc(9 * sizeof(char));
+    memcpy(prots[3].regex, "^USER .*", 9);
+
+    prots[4].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[4].name, "FTP", 4);
+    prots[4].regex = (char*) malloc(9 * sizeof(char));
+    memcpy(prots[4].regex, "^LIST .*", 9);
+
+    prots[5].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[5].name, "FTP", 4);
+    prots[5].regex = (char*) malloc(14 * sizeof(char));
+    memcpy(prots[5].regex, "^PORT [0-9,]+", 14);
+
+    prots[6].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[6].name, "FTP", 4);
+    prots[6].regex = (char*) malloc(9 * sizeof(char));
+    memcpy(prots[6].regex, "^RETR .*", 9);
+
+    prots[7].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[7].name, "FTP", 4);
+    prots[7].regex = (char*) malloc(9 * sizeof(char));
+    memcpy(prots[7].regex, "^STOR .*", 9);
+    
+    prots[8].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[8].name, "FTP", 4);
+    prots[8].regex = (char*) malloc(8 * sizeof(char));
+    memcpy(prots[8].regex, "^CWD .*", 8);
 }
 
 char* whatprotocol(char *message, Client *c) {
     if(ntohs(c->address.sin_port) == 22)
         return "SSH";
+    else if(ntohs(c->address.sin_port) == 21) 
+        return "FTP";
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 9; i++) {
         
         regex_t regex2;
         int aux;
