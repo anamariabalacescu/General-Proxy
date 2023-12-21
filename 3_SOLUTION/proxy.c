@@ -395,9 +395,9 @@ char* replaceCustomBytes(const char* message, const char* bytes2Replace, const c
     size_t messageLength = strlen(message);
     size_t bytes2ReplaceLength = strlen(bytes2Replace);
     size_t replacementLength = strlen(replacement);
-    printf("Meslen:%ld\n",messageLength);
-    printf("b2rlen:%ld\n",bytes2ReplaceLength);
-    printf("rlen:%ld\n",replacementLength);
+    //printf("Meslen:%ld\n",messageLength);
+    //printf("b2rlen:%ld\n",bytes2ReplaceLength);
+    //printf("rlen:%ld\n",replacementLength);
     //printNow("la replace\n");
 
     char* result = (char*)malloc((messageLength - bytes2ReplaceLength + replacementLength + 1) * sizeof(char));
@@ -515,12 +515,11 @@ void *handle_client(void *arg) {
         valread = read(client->socket, buffer, sizeof(buffer));
 
         if(protIsValid(buffer) == 1)
-        {
+        {   
             printf("Client message: \n");
             hex_dump(buffer, client);
-            pthread_mutex_lock(&mutex);
             send(server_socket, buffer, strlen(buffer), 0);
-
+            pthread_mutex_lock(&mutex);
             history("Proxy", "forwarded the packet to the server");
             // Receive the server's response
             valread = recv(server_socket, buffer, sizeof(buffer), 0);
@@ -584,15 +583,12 @@ void *handle_client(void *arg) {
                     
                     if (choice == 'F') {
                         ok = 1;
-                        // Forward message to server
                         send(server_socket, buffer, strlen(buffer), 0);
 
                         history("Proxy", "forwarded the packet to the server");
-                        // Receive the server's response
                         valread = recv(server_socket, buffer, sizeof(buffer), 0);
 
                         if (valread <= 0) {
-                            // Server disconnected
 
                             history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
                             close(client->socket);
@@ -605,7 +601,6 @@ void *handle_client(void *arg) {
                             printf("\nServer message to client(%d):\n", client->clientNumber);
                             hex_dump(buffer, client);
 
-                            // Send server message to client
                             send(client->socket, buffer, strlen(buffer), 0);
                             pthread_mutex_unlock(&mutex);
                         }
@@ -618,9 +613,37 @@ void *handle_client(void *arg) {
                         send(client->socket, buffer, strlen(buffer), 0);
                         pthread_mutex_unlock(&mutex);
                     } else if (choice == 'R') {
-                        //history("Proxy", "replaces bytes");
+
+                        size_t len = strlen(buffer);
+                        char* hex = malloc(2*len-1);
+                        hex = charToHex(buffer);
+                        int length = 0;
+                        char* replacedHex;
+                        for(int i=0;i<rplbytes;i++) {
+                            replacedHex = (char*)malloc(2 * len + strlen(rBytes.replacedValue[i]) - strlen(rBytes.initialValue[i]) + 1);
+                            replacedHex = replaceCustomBytes(hex, rBytes.initialValue[i], rBytes.replacedValue[i], &length);
+                        }
+                            
+                        char* ascii = (char*)malloc(length/2 + 1);
+                        ascii = hexToAscii(replacedHex, length);
+                        hex_dump(ascii, client);
+                        
+                        send(server_socket, ascii, strlen(ascii), 0);
+                        history("Proxy", "forwarded the packet to the server");
+
+                        int valread = recv(server_socket, buffer, sizeof(buffer), 0);
+                        buffer[valread] = '\0';
+
+                        printf("\nServer message to client(%d):\n", client->clientNumber);
+                        hex_dump(buffer, client);
+                        history("Server", "sent a response packet to the proxy");
+                        // Send server message to client
+                        send(client->socket, buffer, strlen(buffer), 0);
+                        history("Proxy", "forwarded the packet to the client");
+                        
+                        
                         ok =1;
-                        //TO DO
+                        
                         pthread_mutex_unlock(&mutex);
                     } else if (choice == 'C') {
                         ok =1;
@@ -651,20 +674,21 @@ void *handle_client(void *arg) {
 
                         int length = 0;
                         char* replacedHex = (char*)malloc(2 * len + strlen(replacement) - strlen(bytes2Replace) + 1);
+                        printf("%s cu %s",bytes2Replace,replacement);
                         replacedHex= replaceCustomBytes(hex, bytes2Replace, replacement, &length);
                         //printNow(replacedHex);
 
-                        printNow(replacedHex);
-                        printf("Length: %d\n", length);
+                        //printNow(replacedHex);
+                        //printf("Length: %d\n", length);
                         char* ascii = (char*)malloc(length/2 + 1);
-                        printf("Size of ascii: %ld\n", strlen(ascii));
-                        printf("Size of replacedHex: %ld\n", strlen(replacedHex));
+                        //printf("Size of ascii: %ld\n", strlen(ascii));
+                        //printf("Size of replacedHex: %ld\n", strlen(replacedHex));
 
-                        printf("Length: %d\n", length);
+                        //printf("Length: %d\n", length);
                         ascii = hexToAscii(replacedHex, length);
                         //printNow(ascii);
 
-                        printf("Replaced message: %s\n");
+                        //printf("Replaced message: %s\n");
                         hex_dump(ascii, client);
 
                         // Forward message to server
