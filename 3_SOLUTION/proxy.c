@@ -67,6 +67,7 @@ WaitingList* waiting_list;
 typedef struct{
     char* name;
     char* regex;
+    char* hex;
 }protocol;
 
 protocol* prots;
@@ -78,46 +79,80 @@ void initialize_protocols() {
     memcpy(prots[0].name, "HTTP", 5);
     prots[0].regex = (char*)malloc(22 * sizeof(char));
     memcpy(prots[0].regex, "^GET http://www.+ HTTP.+", 22);
+    prots[0].hex = (char*)malloc(strlen("485454502F") + 1);
+    memcpy(prots[0].hex, "485454502F", strlen("485454502F")+1);
+    prots[0].hex[strlen("485454502F")] = '\0';
 
     prots[1].name = (char*)malloc(5 * sizeof(char));
     memcpy(prots[1].name, "HTTP", 5);
     prots[1].regex = (char*)malloc(27 * sizeof(char));
-    memcpy(prots[1].regex, "^POST /submit-form HTTP/1.1", 27);
+    memcpy(prots[1].regex, "^POST /submit-form HTTP/", 27);
+    prots[1].hex = (char*)malloc(strlen("504F5354202F7375626D69742D666F726D20485454502F") + 1);
+    memcpy(prots[1].hex, "504F5354202F7375626D69742D666F726D20485454502F", strlen("504F5354202F7375626D69742D666F726D20485454502F")+1);
+    prots[1].hex[strlen("504F5354202F7375626D69742D666F726D20485454502F")] = '\0';
 
     prots[2].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[2].name, "SSH", 4);
     prots[2].regex = (char*) malloc(29 * sizeof(char));
     memcpy(prots[2].regex, "^SSH-[0-9]+.[0-9]+-OpenSSH.*", 29);
+    prots[2].hex = (char*)malloc(strlen("2D4F70656E535348") + 1);
+    memcpy(prots[2].hex, "2D4F70656E535348", strlen("2D4F70656E535348")+1);
 
     prots[3].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[3].name, "FTP", 4);
     prots[3].regex = (char*) malloc(9 * sizeof(char));
-    memcpy(prots[3].regex, "^USER .*", 9);
+    memcpy(prots[3].regex, "^USER .*", 9); 
+    prots[3].hex = (char*)malloc(strlen("55534552") + 1);
+    memcpy(prots[3].hex, "55534552", strlen("55534552")+1);
 
     prots[4].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[4].name, "FTP", 4);
     prots[4].regex = (char*) malloc(9 * sizeof(char));
     memcpy(prots[4].regex, "^LIST .*", 9);
+    prots[4].hex = (char*)malloc(strlen("4C495354") + 1);
+    memcpy(prots[4].hex, "4C495354", strlen("4C495354")+1);
 
     prots[5].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[5].name, "FTP", 4);
     prots[5].regex = (char*) malloc(14 * sizeof(char));
     memcpy(prots[5].regex, "^PORT [0-9,]+", 14);
+    prots[5].hex = (char*)malloc(strlen("504F5254") + 1);
+    memcpy(prots[5].hex, "504F5254", strlen("504F5254")+1);
 
     prots[6].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[6].name, "FTP", 4);
     prots[6].regex = (char*) malloc(9 * sizeof(char));
     memcpy(prots[6].regex, "^RETR .*", 9);
+    prots[6].hex = (char*)malloc(strlen("52455452") + 1);
+    memcpy(prots[6].hex, "52455452", strlen("52455452")+1);
 
     prots[7].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[7].name, "FTP", 4);
     prots[7].regex = (char*) malloc(9 * sizeof(char));
     memcpy(prots[7].regex, "^STOR .*", 9);
+    prots[7].hex = (char*)malloc(strlen("53544F52") + 1);
+    memcpy(prots[7].hex, "53544F52", strlen("53544F52")+1);
     
     prots[8].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[8].name, "FTP", 4);
     prots[8].regex = (char*) malloc(8 * sizeof(char));
     memcpy(prots[8].regex, "^CWD .*", 8);
+    prots[8].hex = (char*)malloc(strlen("435744") + 1);
+    memcpy(prots[8].hex, "435744", strlen("435744")+1);
+
+    prots[9].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[9].name, "SSH", 4);
+    prots[9].regex = (char*) malloc(29 * sizeof(char));
+    memcpy(prots[9].regex, ".*ssh-userauth.*", 29);
+    prots[9].hex = (char*)malloc(strlen("7373682d7573657261757468") + 1);
+    memcpy(prots[9].hex, "7373682d7573657261757468", strlen("7373682d7573657261757468")+1);
+
+    prots[10].name = (char*)malloc(4 * sizeof(char));
+    memcpy(prots[10].name, "SSH", 4);
+    prots[10].regex = (char*) malloc(29 * sizeof(char));
+    memcpy(prots[10].regex, ".*ssh-connection.*", 29);
+    prots[10].hex = (char*)malloc(strlen("7373682D636F6E6E656374696F6E") + 1);
+    memcpy(prots[10].hex, "7373682D636F6E6E656374696F6E", strlen("7373682D636F6E6E656374696F6E")+1);
 }
 
 char* whatprotocol(char *message, Client *c) {
@@ -126,7 +161,7 @@ char* whatprotocol(char *message, Client *c) {
     else if(ntohs(c->address.sin_port) == 21) 
         return "FTP";
 
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < 11; i++) {
         
         regex_t regex2;
         int aux;
@@ -138,7 +173,7 @@ char* whatprotocol(char *message, Client *c) {
 
         if (aux != 0) {
             fprintf(stderr, "Error compiling regex for protocol %d\n", i + 1);
-            return "TCP protocol";  // Error code
+            return "TCP protocol";  
         }
 
         // Execute the regular expression match
@@ -435,6 +470,29 @@ char* replaceCustomBytes(const char* message, const char* bytes2Replace, const c
     return result;
 }
 
+char* printType(char* message) //client message in clear -- detect protocol function for bytes
+{
+    //printf("\nGot in type function\n");
+    size_t len = strlen(message);
+    char* hex = (char*)malloc(2 * len + 1);
+    hex = charToHex(message); //message bytes
+    //printf("\nGot hex of message\n");
+    //printf("%s\n", hex);
+
+    //we have the hex, we compare to known hex bytes of protocols
+    for(int i = 0; i < 11; i++)
+    {
+        //printf("%s\n", prots[i].hex);
+        if(strstr(hex, prots[i].hex)!=NULL)
+        {
+            //printf("\ngot prot name\n");
+            return prots[i].name;
+        }
+            //printf("\nno prot name\n");
+    }
+    return "TCP"; //not a known protocol
+}
+
 int hex_to_int(char c){
         int first = c / 16 - 3;
         int second = c % 16;
@@ -475,7 +533,7 @@ char* hexToAscii(char* hex, int hex_len) {
     return ascii;
 }
 
-int protIsValid(char* message)
+int protIsValid(char* message) //forward directly
 {
     for (int i = 0; i < prot_no; i++) {
         regex_t regex;
@@ -515,7 +573,7 @@ void *handle_client(void *arg) {
         valread = read(client->socket, buffer, sizeof(buffer));
 
         if(protIsValid(buffer) == 1)
-        {
+        {//forward directly --the protocol is in the white
             printf("Client message: \n");
             hex_dump(buffer, client);
             pthread_mutex_lock(&mutex);
@@ -703,7 +761,9 @@ void hex_dump(const char* message, Client *c) {
     ssize_t length = strlen(message);
     size_t i, j;
     char *numeProtocol = (char*)malloc(20 * sizeof(char));
-    numeProtocol = whatprotocol(message, c);
+    //printf("Got in hexdump");
+    numeProtocol = printType(message);
+    //numeProtocol = whatprotocol(message, c);
     printf("Protocol: %s\n", numeProtocol);
 
     for (i = 0; i < length; i += 16) {
