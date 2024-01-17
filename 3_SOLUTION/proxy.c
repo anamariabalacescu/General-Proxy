@@ -33,6 +33,10 @@ struct replaceBytes{
 int rplbytes=0;
 //
 
+char option[2];
+int argumentCount;
+
+
 int proxy_socket;
 int server_socket;
 struct sockaddr_in proxy_addr;
@@ -430,12 +434,17 @@ char* replaceCustomBytes(const char* message, const char* bytes2Replace, const c
     size_t messageLength = strlen(message);
     size_t bytes2ReplaceLength = strlen(bytes2Replace);
     size_t replacementLength = strlen(replacement);
-    printf("Meslen:%ld\n",messageLength);
-    printf("b2rlen:%ld\n",bytes2ReplaceLength);
-    printf("rlen:%ld\n",replacementLength);
-    //printNow("la replace\n");
-
-    char* result = (char*)malloc((messageLength - bytes2ReplaceLength + replacementLength + 1) * sizeof(char));
+    
+    int size = messageLength - bytes2ReplaceLength + replacementLength + 1;
+    if(size<0){
+        char* messageToSent = malloc(strlen(message));
+        strcpy(messageToSent,message);
+        int sizeOfMessage = strlen(message);
+        *lenght = sizeOfMessage;
+        return messageToSent;
+    }
+    
+    char* result = (char*)malloc(size * sizeof(char));
     if (result == NULL) {
         perror("Memory allocation failed");
         exit(EXIT_FAILURE);
@@ -460,10 +469,6 @@ char* replaceCustomBytes(const char* message, const char* bytes2Replace, const c
         }
     }
     result[k] = '\0';
-    //printf("\n");
-    //printNow(result);
-
-    //printNow("am iesit din for\n");
     *lenght = k;
     history("Proxy","has replaced bytes as dictated in CLI");
 
@@ -502,25 +507,18 @@ int hex_to_int(char c){
 }
 
 char* hexToAscii(char* hex, int hex_len) {
-    //printNow(hex);
-    //int hex_len=strlen(hex);
-    
+   
     if (hex_len % 2 != 0) {
         // Invalid hex string
         return NULL;
     }
 
-    // for(int i = 0; i <= hex_len; i++)
-    //     printf("%c ", hex[i]);
-
-   //printNow("la hex to ascii\n");
 
     int ascii_len = hex_len / 2;
 
     char* ascii = (char*)malloc(ascii_len + 1);
 
     for (int i = 0; i < ascii_len; i++) {
-        //printf("Se calculeaza traducerea in ascii\n");
         if(2*i < hex_len) {
             int c1 = hex_to_int(hex[2*i]);
             int c2 = hex_to_int(hex[2*i+1]);
@@ -528,7 +526,6 @@ char* hexToAscii(char* hex, int hex_len) {
         }
     }
 
-    //printNow("gata");
     ascii[ascii_len] = '\0';
     return ascii;
 }
@@ -538,7 +535,11 @@ int protIsValid(char* message) //forward directly
     for (int i = 0; i < prot_no; i++) {
         regex_t regex;
         int ret;
-
+        if(argumentCount == 6 && strcmp(option,"-f")==0)
+        {
+                return 1;
+        }
+        
         // Compile the regular expression
         ret = regcomp(&regex, protocols[i], REG_EXTENDED);
         if (ret != 0) {
@@ -573,12 +574,15 @@ void *handle_client(void *arg) {
         valread = read(client->socket, buffer, sizeof(buffer));
 
         if(protIsValid(buffer) == 1)
+<<<<<<< HEAD
         {//forward directly --the protocol is in the white
+=======
+        {   
+>>>>>>> 6a321c014c6443b8383dd00afe1b1bc97ff0fac0
             printf("Client message: \n");
             hex_dump(buffer, client);
-            pthread_mutex_lock(&mutex);
             send(server_socket, buffer, strlen(buffer), 0);
-
+            pthread_mutex_lock(&mutex);
             history("Proxy", "forwarded the packet to the server");
             // Receive the server's response
             valread = recv(server_socket, buffer, sizeof(buffer), 0);
@@ -642,15 +646,12 @@ void *handle_client(void *arg) {
                     
                     if (choice == 'F') {
                         ok = 1;
-                        // Forward message to server
                         send(server_socket, buffer, strlen(buffer), 0);
 
                         history("Proxy", "forwarded the packet to the server");
-                        // Receive the server's response
                         valread = recv(server_socket, buffer, sizeof(buffer), 0);
 
                         if (valread <= 0) {
-                            // Server disconnected
 
                             history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
                             close(client->socket);
@@ -663,7 +664,6 @@ void *handle_client(void *arg) {
                             printf("\nServer message to client(%d):\n", client->clientNumber);
                             hex_dump(buffer, client);
 
-                            // Send server message to client
                             send(client->socket, buffer, strlen(buffer), 0);
                             pthread_mutex_unlock(&mutex);
                         }
@@ -676,9 +676,37 @@ void *handle_client(void *arg) {
                         send(client->socket, buffer, strlen(buffer), 0);
                         pthread_mutex_unlock(&mutex);
                     } else if (choice == 'R') {
-                        //history("Proxy", "replaces bytes");
+
+                        size_t len = strlen(buffer);
+                        char* hex = malloc(2*len-1);
+                        hex = charToHex(buffer);
+                        int length = 0;
+                        char* replacedHex;
+                        for(int i=0;i<rplbytes;i++) {
+                            replacedHex = (char*)malloc(2 * len + strlen(rBytes.replacedValue[i]) - strlen(rBytes.initialValue[i]) + 1);
+                            replacedHex = replaceCustomBytes(hex, rBytes.initialValue[i], rBytes.replacedValue[i], &length);
+                        }
+                            
+                        char* ascii = (char*)malloc(length/2 + 1);
+                        ascii = hexToAscii(replacedHex, length);
+                        hex_dump(ascii, client);
+                        
+                        send(server_socket, ascii, strlen(ascii), 0);
+                        history("Proxy", "forwarded the packet to the server");
+
+                        int valread = recv(server_socket, buffer, sizeof(buffer), 0);
+                        buffer[valread] = '\0';
+
+                        printf("\nServer message to client(%d):\n", client->clientNumber);
+                        hex_dump(buffer, client);
+                        history("Server", "sent a response packet to the proxy");
+                        // Send server message to client
+                        send(client->socket, buffer, strlen(buffer), 0);
+                        history("Proxy", "forwarded the packet to the client");
+                        
+                        
                         ok =1;
-                        //TO DO
+                        
                         pthread_mutex_unlock(&mutex);
                     } else if (choice == 'C') {
                         ok =1;
@@ -705,24 +733,17 @@ void *handle_client(void *arg) {
                         }
                         replacement[chn] = '\0';
                         
-                        //printNow(hex);
+                       
 
                         int length = 0;
                         char* replacedHex = (char*)malloc(2 * len + strlen(replacement) - strlen(bytes2Replace) + 1);
+                        printf("%s cu %s",bytes2Replace,replacement);
                         replacedHex= replaceCustomBytes(hex, bytes2Replace, replacement, &length);
-                        //printNow(replacedHex);
-
-                        printNow(replacedHex);
-                        printf("Length: %d\n", length);
+                    
                         char* ascii = (char*)malloc(length/2 + 1);
-                        printf("Size of ascii: %ld\n", strlen(ascii));
-                        printf("Size of replacedHex: %ld\n", strlen(replacedHex));
-
-                        printf("Length: %d\n", length);
+                  
                         ascii = hexToAscii(replacedHex, length);
-                        //printNow(ascii);
-
-                        printf("Replaced message: %s\n");
+                      
                         hex_dump(ascii, client);
 
                         // Forward message to server
@@ -747,8 +768,7 @@ void *handle_client(void *arg) {
                         pthread_mutex_unlock(&mutex);
                     }
                 }while(ok == 0);
-                // Forward the server's response to the client
-                //send(client->socket, buffer, strlen(buffer), 0);
+                // Forward the server's response to the clien
             }
         }
     }
@@ -802,11 +822,10 @@ void hex_dump(const char* message, Client *c) {
 
 int searchBlocked(char *add, int type){
     if(type == 1){
-        //printf("aici\n");
         //search ip
         for(int i = 0; i < blckip; i++)
             if(strstr(blockedIp[i], add) != NULL){
-                //printf("aici\n");
+              
                 return 1;
             }
         return 0;
@@ -835,10 +854,22 @@ void history(const char* maker, const char* action) {
 }
 
 int main(int argc, char* argv[]) {
-    // if (argc < 4) {
-    //     perror("Missing parameter");
-    //     exit(-1);
-    // }
+    
+
+    if (argc >= 6) {
+
+        if (argv[5] != NULL && strcmp(argv[5], "-f") == 0) {
+            argumentCount = argc;
+            memcpy(option, argv[5], 3);
+        } else {
+            argumentCount = 6;
+            memcpy(option, "\0", 2);
+        }
+    } else {
+        argumentCount = 5;
+     
+        memcpy(option, "\0", 2);
+    }
 
     // Initialize arrays
     blockedIp = (char**)malloc(sizeof(char*));
@@ -905,7 +936,7 @@ int main(int argc, char* argv[]) {
         int client_socket;
         struct sockaddr_in client_addr;
         int client_size = sizeof(client_addr);
-        // printf("aici 1\n");
+ 
         // Accept an incoming connection from a client
         client_socket = accept(proxy_socket, (struct sockaddr*)&client_addr, &client_size);
         
@@ -916,9 +947,9 @@ int main(int argc, char* argv[]) {
 
         if(searchBlocked(inet_ntoa(client_addr.sin_addr), 1) == 0) {
         // Create a new thread to handle the client
-            // printf("aici 3\n");
+    
             history(inet_ntoa(client_addr.sin_addr), "connected to the proxy");
-            //history("Client", "connected to the proxy");
+
             Client *client = (Client *)malloc(sizeof(Client));
             client->socket = client_socket;
             client->address = client_addr;
@@ -943,7 +974,7 @@ int main(int argc, char* argv[]) {
                 enqueue_waiting_client(client);
             }
         } else{ 
-            //printf("aici 2\n");
+
             history(inet_ntoa(client_addr.sin_addr), "blocked by the proxy");
             printf("Blocked ip: %s\n", inet_ntoa(client_addr.sin_addr));
             close(client_socket);
