@@ -33,6 +33,10 @@ struct replaceBytes{
 int rplbytes=0;
 //
 
+char option[2];
+int argumentCount;
+
+
 int proxy_socket;
 int server_socket;
 struct sockaddr_in proxy_addr;
@@ -67,7 +71,6 @@ WaitingList* waiting_list;
 typedef struct{
     char* name;
     char* regex;
-    char* hex;
 }protocol;
 
 protocol* prots;
@@ -79,80 +82,46 @@ void initialize_protocols() {
     memcpy(prots[0].name, "HTTP", 5);
     prots[0].regex = (char*)malloc(22 * sizeof(char));
     memcpy(prots[0].regex, "^GET http://www.+ HTTP.+", 22);
-    prots[0].hex = (char*)malloc(strlen("485454502F") + 1);
-    memcpy(prots[0].hex, "485454502F", strlen("485454502F")+1);
-    prots[0].hex[strlen("485454502F")] = '\0';
 
     prots[1].name = (char*)malloc(5 * sizeof(char));
     memcpy(prots[1].name, "HTTP", 5);
     prots[1].regex = (char*)malloc(27 * sizeof(char));
-    memcpy(prots[1].regex, "^POST /submit-form HTTP/", 27);
-    prots[1].hex = (char*)malloc(strlen("504F5354202F7375626D69742D666F726D20485454502F") + 1);
-    memcpy(prots[1].hex, "504F5354202F7375626D69742D666F726D20485454502F", strlen("504F5354202F7375626D69742D666F726D20485454502F")+1);
-    prots[1].hex[strlen("504F5354202F7375626D69742D666F726D20485454502F")] = '\0';
+    memcpy(prots[1].regex, "^POST /submit-form HTTP/1.1", 27);
 
     prots[2].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[2].name, "SSH", 4);
     prots[2].regex = (char*) malloc(29 * sizeof(char));
     memcpy(prots[2].regex, "^SSH-[0-9]+.[0-9]+-OpenSSH.*", 29);
-    prots[2].hex = (char*)malloc(strlen("2D4F70656E535348") + 1);
-    memcpy(prots[2].hex, "2D4F70656E535348", strlen("2D4F70656E535348")+1);
 
     prots[3].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[3].name, "FTP", 4);
     prots[3].regex = (char*) malloc(9 * sizeof(char));
-    memcpy(prots[3].regex, "^USER .*", 9); 
-    prots[3].hex = (char*)malloc(strlen("55534552") + 1);
-    memcpy(prots[3].hex, "55534552", strlen("55534552")+1);
+    memcpy(prots[3].regex, "^USER .*", 9);
 
     prots[4].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[4].name, "FTP", 4);
     prots[4].regex = (char*) malloc(9 * sizeof(char));
     memcpy(prots[4].regex, "^LIST .*", 9);
-    prots[4].hex = (char*)malloc(strlen("4C495354") + 1);
-    memcpy(prots[4].hex, "4C495354", strlen("4C495354")+1);
 
     prots[5].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[5].name, "FTP", 4);
     prots[5].regex = (char*) malloc(14 * sizeof(char));
     memcpy(prots[5].regex, "^PORT [0-9,]+", 14);
-    prots[5].hex = (char*)malloc(strlen("504F5254") + 1);
-    memcpy(prots[5].hex, "504F5254", strlen("504F5254")+1);
 
     prots[6].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[6].name, "FTP", 4);
     prots[6].regex = (char*) malloc(9 * sizeof(char));
     memcpy(prots[6].regex, "^RETR .*", 9);
-    prots[6].hex = (char*)malloc(strlen("52455452") + 1);
-    memcpy(prots[6].hex, "52455452", strlen("52455452")+1);
 
     prots[7].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[7].name, "FTP", 4);
     prots[7].regex = (char*) malloc(9 * sizeof(char));
     memcpy(prots[7].regex, "^STOR .*", 9);
-    prots[7].hex = (char*)malloc(strlen("53544F52") + 1);
-    memcpy(prots[7].hex, "53544F52", strlen("53544F52")+1);
     
     prots[8].name = (char*)malloc(4 * sizeof(char));
     memcpy(prots[8].name, "FTP", 4);
     prots[8].regex = (char*) malloc(8 * sizeof(char));
     memcpy(prots[8].regex, "^CWD .*", 8);
-    prots[8].hex = (char*)malloc(strlen("435744") + 1);
-    memcpy(prots[8].hex, "435744", strlen("435744")+1);
-
-    prots[9].name = (char*)malloc(4 * sizeof(char));
-    memcpy(prots[9].name, "SSH", 4);
-    prots[9].regex = (char*) malloc(29 * sizeof(char));
-    memcpy(prots[9].regex, ".*ssh-userauth.*", 29);
-    prots[9].hex = (char*)malloc(strlen("7373682d7573657261757468") + 1);
-    memcpy(prots[9].hex, "7373682d7573657261757468", strlen("7373682d7573657261757468")+1);
-
-    prots[10].name = (char*)malloc(4 * sizeof(char));
-    memcpy(prots[10].name, "SSH", 4);
-    prots[10].regex = (char*) malloc(29 * sizeof(char));
-    memcpy(prots[10].regex, ".*ssh-connection.*", 29);
-    prots[10].hex = (char*)malloc(strlen("7373682D636F6E6E656374696F6E") + 1);
-    memcpy(prots[10].hex, "7373682D636F6E6E656374696F6E", strlen("7373682D636F6E6E656374696F6E")+1);
 }
 
 char* whatprotocol(char *message, Client *c) {
@@ -161,7 +130,7 @@ char* whatprotocol(char *message, Client *c) {
     else if(ntohs(c->address.sin_port) == 21) 
         return "FTP";
 
-    for (int i = 0; i < 11; i++) {
+    for (int i = 0; i < 9; i++) {
         
         regex_t regex2;
         int aux;
@@ -173,7 +142,7 @@ char* whatprotocol(char *message, Client *c) {
 
         if (aux != 0) {
             fprintf(stderr, "Error compiling regex for protocol %d\n", i + 1);
-            return "TCP protocol";  
+            return "TCP protocol";  // Error code
         }
 
         // Execute the regular expression match
@@ -430,12 +399,17 @@ char* replaceCustomBytes(const char* message, const char* bytes2Replace, const c
     size_t messageLength = strlen(message);
     size_t bytes2ReplaceLength = strlen(bytes2Replace);
     size_t replacementLength = strlen(replacement);
-    printf("Meslen:%ld\n",messageLength);
-    printf("b2rlen:%ld\n",bytes2ReplaceLength);
-    printf("rlen:%ld\n",replacementLength);
-    //printNow("la replace\n");
-
-    char* result = (char*)malloc((messageLength - bytes2ReplaceLength + replacementLength + 1) * sizeof(char));
+    
+    int size = messageLength - bytes2ReplaceLength + replacementLength + 1;
+    if(size<0){
+        char* messageToSent = malloc(strlen(message));
+        strcpy(messageToSent,message);
+        int sizeOfMessage = strlen(message);
+        *lenght = sizeOfMessage;
+        return messageToSent;
+    }
+    
+    char* result = (char*)malloc(size * sizeof(char));
     if (result == NULL) {
         perror("Memory allocation failed");
         exit(EXIT_FAILURE);
@@ -460,37 +434,10 @@ char* replaceCustomBytes(const char* message, const char* bytes2Replace, const c
         }
     }
     result[k] = '\0';
-    //printf("\n");
-    //printNow(result);
-
-    //printNow("am iesit din for\n");
     *lenght = k;
     history("Proxy","has replaced bytes as dictated in CLI");
 
     return result;
-}
-
-char* printType(char* message) //client message in clear -- detect protocol function for bytes
-{
-    //printf("\nGot in type function\n");
-    size_t len = strlen(message);
-    char* hex = (char*)malloc(2 * len + 1);
-    hex = charToHex(message); //message bytes
-    //printf("\nGot hex of message\n");
-    //printf("%s\n", hex);
-
-    //we have the hex, we compare to known hex bytes of protocols
-    for(int i = 0; i < 11; i++)
-    {
-        //printf("%s\n", prots[i].hex);
-        if(strstr(hex, prots[i].hex)!=NULL)
-        {
-            //printf("\ngot prot name\n");
-            return prots[i].name;
-        }
-            //printf("\nno prot name\n");
-    }
-    return "TCP"; //not a known protocol
 }
 
 int hex_to_int(char c){
@@ -502,25 +449,18 @@ int hex_to_int(char c){
 }
 
 char* hexToAscii(char* hex, int hex_len) {
-    //printNow(hex);
-    //int hex_len=strlen(hex);
-    
+   
     if (hex_len % 2 != 0) {
         // Invalid hex string
         return NULL;
     }
 
-    // for(int i = 0; i <= hex_len; i++)
-    //     printf("%c ", hex[i]);
-
-   //printNow("la hex to ascii\n");
 
     int ascii_len = hex_len / 2;
 
     char* ascii = (char*)malloc(ascii_len + 1);
 
     for (int i = 0; i < ascii_len; i++) {
-        //printf("Se calculeaza traducerea in ascii\n");
         if(2*i < hex_len) {
             int c1 = hex_to_int(hex[2*i]);
             int c2 = hex_to_int(hex[2*i+1]);
@@ -528,17 +468,20 @@ char* hexToAscii(char* hex, int hex_len) {
         }
     }
 
-    //printNow("gata");
     ascii[ascii_len] = '\0';
     return ascii;
 }
 
-int protIsValid(char* message) //forward directly
+int protIsValid(char* message)
 {
     for (int i = 0; i < prot_no; i++) {
         regex_t regex;
         int ret;
-
+        if(argumentCount == 6 && strcmp(option,"-f")==0)
+        {
+                return 1;
+        }
+        
         // Compile the regular expression
         ret = regcomp(&regex, protocols[i], REG_EXTENDED);
         if (ret != 0) {
@@ -573,12 +516,11 @@ void *handle_client(void *arg) {
         valread = read(client->socket, buffer, sizeof(buffer));
 
         if(protIsValid(buffer) == 1)
-        {//forward directly --the protocol is in the white
+        {   
             printf("Client message: \n");
             hex_dump(buffer, client);
-            pthread_mutex_lock(&mutex);
             send(server_socket, buffer, strlen(buffer), 0);
-
+            pthread_mutex_lock(&mutex);
             history("Proxy", "forwarded the packet to the server");
             // Receive the server's response
             valread = recv(server_socket, buffer, sizeof(buffer), 0);
@@ -642,15 +584,12 @@ void *handle_client(void *arg) {
                     
                     if (choice == 'F') {
                         ok = 1;
-                        // Forward message to server
                         send(server_socket, buffer, strlen(buffer), 0);
 
                         history("Proxy", "forwarded the packet to the server");
-                        // Receive the server's response
                         valread = recv(server_socket, buffer, sizeof(buffer), 0);
 
                         if (valread <= 0) {
-                            // Server disconnected
 
                             history(inet_ntoa(client->address.sin_addr), "disconnected from the proxy");
                             close(client->socket);
@@ -663,7 +602,6 @@ void *handle_client(void *arg) {
                             printf("\nServer message to client(%d):\n", client->clientNumber);
                             hex_dump(buffer, client);
 
-                            // Send server message to client
                             send(client->socket, buffer, strlen(buffer), 0);
                             pthread_mutex_unlock(&mutex);
                         }
@@ -676,9 +614,37 @@ void *handle_client(void *arg) {
                         send(client->socket, buffer, strlen(buffer), 0);
                         pthread_mutex_unlock(&mutex);
                     } else if (choice == 'R') {
-                        //history("Proxy", "replaces bytes");
+
+                        size_t len = strlen(buffer);
+                        char* hex = malloc(2*len-1);
+                        hex = charToHex(buffer);
+                        int length = 0;
+                        char* replacedHex;
+                        for(int i=0;i<rplbytes;i++) {
+                            replacedHex = (char*)malloc(2 * len + strlen(rBytes.replacedValue[i]) - strlen(rBytes.initialValue[i]) + 1);
+                            replacedHex = replaceCustomBytes(hex, rBytes.initialValue[i], rBytes.replacedValue[i], &length);
+                        }
+                            
+                        char* ascii = (char*)malloc(length/2 + 1);
+                        ascii = hexToAscii(replacedHex, length);
+                        hex_dump(ascii, client);
+                        
+                        send(server_socket, ascii, strlen(ascii), 0);
+                        history("Proxy", "forwarded the packet to the server");
+
+                        int valread = recv(server_socket, buffer, sizeof(buffer), 0);
+                        buffer[valread] = '\0';
+
+                        printf("\nServer message to client(%d):\n", client->clientNumber);
+                        hex_dump(buffer, client);
+                        history("Server", "sent a response packet to the proxy");
+                        // Send server message to client
+                        send(client->socket, buffer, strlen(buffer), 0);
+                        history("Proxy", "forwarded the packet to the client");
+                        
+                        
                         ok =1;
-                        //TO DO
+                        
                         pthread_mutex_unlock(&mutex);
                     } else if (choice == 'C') {
                         ok =1;
@@ -705,24 +671,17 @@ void *handle_client(void *arg) {
                         }
                         replacement[chn] = '\0';
                         
-                        //printNow(hex);
+                       
 
                         int length = 0;
                         char* replacedHex = (char*)malloc(2 * len + strlen(replacement) - strlen(bytes2Replace) + 1);
+                        printf("%s cu %s",bytes2Replace,replacement);
                         replacedHex= replaceCustomBytes(hex, bytes2Replace, replacement, &length);
-                        //printNow(replacedHex);
-
-                        printNow(replacedHex);
-                        printf("Length: %d\n", length);
+                    
                         char* ascii = (char*)malloc(length/2 + 1);
-                        printf("Size of ascii: %ld\n", strlen(ascii));
-                        printf("Size of replacedHex: %ld\n", strlen(replacedHex));
-
-                        printf("Length: %d\n", length);
+                  
                         ascii = hexToAscii(replacedHex, length);
-                        //printNow(ascii);
-
-                        printf("Replaced message: %s\n");
+                      
                         hex_dump(ascii, client);
 
                         // Forward message to server
@@ -747,8 +706,7 @@ void *handle_client(void *arg) {
                         pthread_mutex_unlock(&mutex);
                     }
                 }while(ok == 0);
-                // Forward the server's response to the client
-                //send(client->socket, buffer, strlen(buffer), 0);
+                // Forward the server's response to the clien
             }
         }
     }
@@ -761,9 +719,7 @@ void hex_dump(const char* message, Client *c) {
     ssize_t length = strlen(message);
     size_t i, j;
     char *numeProtocol = (char*)malloc(20 * sizeof(char));
-    //printf("Got in hexdump");
-    numeProtocol = printType(message);
-    //numeProtocol = whatprotocol(message, c);
+    numeProtocol = whatprotocol(message, c);
     printf("Protocol: %s\n", numeProtocol);
 
     for (i = 0; i < length; i += 16) {
@@ -802,11 +758,10 @@ void hex_dump(const char* message, Client *c) {
 
 int searchBlocked(char *add, int type){
     if(type == 1){
-        //printf("aici\n");
         //search ip
         for(int i = 0; i < blckip; i++)
             if(strstr(blockedIp[i], add) != NULL){
-                //printf("aici\n");
+              
                 return 1;
             }
         return 0;
@@ -835,10 +790,22 @@ void history(const char* maker, const char* action) {
 }
 
 int main(int argc, char* argv[]) {
-    // if (argc < 4) {
-    //     perror("Missing parameter");
-    //     exit(-1);
-    // }
+    
+
+    if (argc >= 6) {
+
+        if (argv[5] != NULL && strcmp(argv[5], "-f") == 0) {
+            argumentCount = argc;
+            memcpy(option, argv[5], 3);
+        } else {
+            argumentCount = 6;
+            memcpy(option, "\0", 2);
+        }
+    } else {
+        argumentCount = 5;
+     
+        memcpy(option, "\0", 2);
+    }
 
     // Initialize arrays
     blockedIp = (char**)malloc(sizeof(char*));
@@ -905,7 +872,7 @@ int main(int argc, char* argv[]) {
         int client_socket;
         struct sockaddr_in client_addr;
         int client_size = sizeof(client_addr);
-        // printf("aici 1\n");
+ 
         // Accept an incoming connection from a client
         client_socket = accept(proxy_socket, (struct sockaddr*)&client_addr, &client_size);
         
@@ -916,9 +883,9 @@ int main(int argc, char* argv[]) {
 
         if(searchBlocked(inet_ntoa(client_addr.sin_addr), 1) == 0) {
         // Create a new thread to handle the client
-            // printf("aici 3\n");
+    
             history(inet_ntoa(client_addr.sin_addr), "connected to the proxy");
-            //history("Client", "connected to the proxy");
+
             Client *client = (Client *)malloc(sizeof(Client));
             client->socket = client_socket;
             client->address = client_addr;
@@ -943,7 +910,7 @@ int main(int argc, char* argv[]) {
                 enqueue_waiting_client(client);
             }
         } else{ 
-            //printf("aici 2\n");
+
             history(inet_ntoa(client_addr.sin_addr), "blocked by the proxy");
             printf("Blocked ip: %s\n", inet_ntoa(client_addr.sin_addr));
             close(client_socket);
