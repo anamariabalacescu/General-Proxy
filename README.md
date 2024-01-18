@@ -19,7 +19,7 @@ In the scope of a user-friendly environment, we build a user guide to every step
 Every action will be documented in the internal history.log.
 
 Other aspects of the project:
-	If the proxy protocol receives "-F" as a parameter it will forward all packets directly.
+	If the proxy protocol receives "-f" as a parameter it will forward all packets directly.
 	For the implementation of multiple client handling, we build the application as multi-threading using a global mutex to define the access to the critical zone.
 
 
@@ -71,3 +71,9 @@ int searchBlocked(char *add, int type)
 	
 void history(const char* maker, const char* action) 
 	-> adds time-stamped actions to the history.log
+
+ 
+	
+
+
+

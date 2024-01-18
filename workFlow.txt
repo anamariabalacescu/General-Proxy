@@ -1,0 +1,20 @@
+1-> Se porneste server-ul cu portul pe care asculta ca parametru (ex: ./server 80000)
+
+2-> Se porneste proxy-ul cu parametrii: adresa ip a serverului, portul pe care asculta serverul, portul pe care asculta proxyul (ex: ./proxy 192.168.0.149 80001 90006)
+	2.1->>* Se poate pune si parametrul "-f" la final pentru a da forward la toate pachetele fara analiza suplimentara 
+
+3-> Se porneste clientul cu parametrii: adresa ip a proxyului, portul pe care ascutla proxy ul(ex: ./client 192.168.0.149 90003)
+
+4-> Se trimite un mesaj de catre client
+
+5-> Proxy-ul analizeaza daca e protocol stabilit in fisierul de reguli, daca nu il trece in analiza
+5.1->> Se alege optiunea pentru actiune asupra pachetului:
+		F - forward
+		D - drop
+		R - replace bytes from file
+		C - replace custom bytes
+			->> se transmite secventa de octeti care trebuie inlocuita fara spatiu(ex: 6A6A20 se da enter apoi se introduce 2020 se da enter si mesajul se va modifica, unde se gaseste 	
+			secventa de octeti 6A6A20 se va modifica in 2020) 
+			->> se transmite secventa de octeti care vor inlocui secventa precedenta fara spatiu SAU enter daca se vrea stergerea lor
+			
+6->> Se trimite catre server mesajul si apoi clientul primeste mesajul de confirmare sau, in cazul D, clientul e notificat ca a fost aruncat pachetul
