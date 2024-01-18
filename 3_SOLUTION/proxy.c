@@ -936,7 +936,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Listen for incoming connections
-    if (listen(proxy_socket, 1000) < 0) {
+    if (listen(proxy_socket, MAX_CLIENTS) < 0) {
         printf("Error while listening\n");
         exit(-1);
     }
